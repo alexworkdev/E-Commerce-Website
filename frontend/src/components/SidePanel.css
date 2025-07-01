@@ -1,0 +1,264 @@
+/* Side Panel Overlay */
+.side-panel-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 9999;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+.side-panel-overlay.open {
+  opacity: 1;
+  visibility: visible;
+}
+
+.side-panel-overlay.closed {
+  opacity: 0;
+  visibility: hidden;
+}
+
+/* Main Side Panel */
+.side-panel {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 365px;
+  height: 100%;
+  background-color: #ffffff;
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.15);
+  transform: translateX(-100%);
+  transition: transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  overflow-y: auto;
+  font-family: "Amazon Ember", Arial, sans-serif;
+}
+
+.side-panel-overlay.open .side-panel {
+  transform: translateX(0);
+}
+
+/* Panel Header */
+.panel-header {
+  background: linear-gradient(to bottom, #232f3e, #131a22);
+  color: white;
+  padding: 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #3a4553;
+}
+
+.user-greeting {
+  display: flex;
+  align-items: center;
+}
+
+/* Remove user icon styles */
+
+.greeting-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.hello-text {
+  font-size: 14px;
+  color: #cccccc;
+  font-weight: 400;
+}
+
+.user-name {
+  font-size: 18px;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  color: #ffffff;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s ease;
+}
+
+.close-btn:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.close-btn:active {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Panel Content */
+.panel-content {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  height: calc(100% - 81px); /* Adjust for header height */
+}
+
+/* Remove section styles */
+
+.panel-links {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex: 1; /* Take up remaining space */
+}
+
+/* Logout section positioned at bottom */
+.logout-section {
+  margin-top: auto;
+  border-top: 1px solid #e6e6e6;
+  background-color: #f8f8f8;
+}
+
+.panel-link-item {
+  display: flex;
+  align-items: center;
+  padding: 16px 20px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  border-bottom: 1px solid #f0f0f0;
+  color: #232f3e;
+  font-size: 14px;
+  font-weight: 400;
+}
+
+.panel-link-item:hover {
+  background-color: #f7f7f7;
+}
+
+.panel-link-item:active {
+  background-color: #eeeeee;
+}
+
+.panel-link-item:last-child {
+  border-bottom: none;
+}
+
+.link-icon {
+  font-size: 16px;
+  margin-right: 16px;
+  width: 20px;
+  text-align: center;
+  color: #666666;
+}
+
+.link-text {
+  flex: 1;
+  font-size: 14px;
+  color: #232f3e;
+  font-weight: 400;
+}
+
+.link-arrow {
+  color: #999999;
+  font-size: 16px;
+  font-weight: 300;
+}
+
+/* Special styling for logout */
+.logout-item {
+  color: #d13212;
+}
+
+.logout-item .link-text {
+  color: #d13212;
+}
+
+.logout-item:hover {
+  background-color: #fef7f7;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .side-panel {
+    width: 300px;
+  }
+}
+
+@media (max-width: 480px) {
+  .side-panel {
+    width: 280px;
+  }
+  
+  .panel-header {
+    padding: 16px;
+  }
+  
+  .section-title {
+    font-size: 16px;
+    padding: 16px 16px 8px 16px;
+  }
+  
+  .panel-link-item {
+    padding: 14px 16px;
+  }
+}
+
+/* Scrollbar Styling */
+.side-panel::-webkit-scrollbar {
+  width: 6px;
+}
+
+.side-panel::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+.side-panel::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 3px;
+}
+
+.side-panel::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+/* Focus States for Accessibility */
+.close-btn:focus {
+  outline: 2px solid #ff9900;
+  outline-offset: 2px;
+}
+
+.panel-link-item:focus {
+  outline: 2px solid #ff9900;
+  outline-offset: -2px;
+  background-color: #fff3cd;
+}
+
+/* Animation for smoother interactions */
+@keyframes slideIn {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.side-panel-overlay.open {
+  animation: fadeIn 0.3s ease;
+}
+
+.side-panel-overlay.open .side-panel {
+  animation: slideIn 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}

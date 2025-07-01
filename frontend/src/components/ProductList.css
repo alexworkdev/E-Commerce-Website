@@ -1,0 +1,113 @@
+.product-section {
+  padding: 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.product-grid {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 20px;
+}
+
+.product-card {
+  border: 1px solid #ddd;
+  padding: 15px;
+  width: 220px;
+  text-align: center;
+  background: #fff;
+  transition: transform 0.2s, box-shadow 0.2s;
+  border-radius: 5px;
+}
+
+.product-card:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.product-card img {
+  width: 100%;
+  height: 150px;
+  object-fit: contain;
+  margin-bottom: 10px;
+}
+
+.product-card h4 {
+  font-size: 16px;
+  margin: 10px 0 5px;
+}
+
+.product-card p {
+  font-size: 14px;
+  margin: 5px 0 10px;
+  color: #333;
+}
+
+.product-card button {
+  background-color: #ff9900;
+  color: white;
+  border: none;
+  padding: 8px 15px;
+  cursor: pointer;
+  border-radius: 4px;
+  margin-top: 5px;
+  transition: background-color 0.2s;
+}
+
+.product-card button:hover {
+  background-color: #e68a00;
+}
+
+.details-link {
+  display: block;
+  margin-top: 8px;
+  color: #007bff;
+  text-decoration: none;
+  font-size: 14px;
+}
+
+.details-link:hover {
+  text-decoration: underline;
+}
+
+.delete-btn {
+  margin-top: 8px;
+  background-color: red;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 13px;
+  transition: background-color 0.2s;
+}
+
+.delete-btn:hover {
+  background-color: darkred;
+}
+
+.category-filter {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin: 20px 0;
+}
+
+.category-filter button {
+  background-color: #f0f0f0;
+  border: 1px solid #ccc;
+  padding: 8px 15px;
+  border-radius: 4px;
+  cursor: pointer;
+  text-transform: capitalize;
+  transition: background-color 0.2s;
+}
+
+.category-filter button.active,
+.category-filter button:hover {
+  background-color: #ff9900;
+  color: white;
+  border-color: #ff9900;
+}
