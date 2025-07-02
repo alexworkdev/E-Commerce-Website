@@ -10,7 +10,7 @@ function Header({ cartItems = [], setSearchTerm }) {
   const [suggestions, setSuggestions] = useState([]);
   const [allProducts, setAllProducts] = useState([]);
   const [panelOpen, setPanelOpen] = useState(false);
-
+  
   const navigate = useNavigate();
   const { logout, isAuthenticated, user } = useAuth0();
 
