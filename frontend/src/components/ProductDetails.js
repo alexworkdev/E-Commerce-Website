@@ -16,68 +16,59 @@ function ProductDetails({ addToCart }) {
   useEffect(() => {
   setLoading(true);
 
-  if (!backendURL) {
-    console.error("❌ Backend URL not configured in .env");
-    setProduct(null);
-    setLoading(false);
-    return;
-  }
+  const isDummyId = !isNaN(id) && parseInt(id) >= 1000 && parseInt(id) <= 1100; 
+  // Limit to expected DummyJSON range
 
-  const numericId = parseInt(id);
-
-  if (numericId >= 1000) {
-    const dummyId = numericId - 1000;
-
-    if (dummyId <= 100) {  // Adjust 100 to the actual DummyJSON product count if needed
-      // DummyJSON Product
-      axios.get(`https://dummyjson.com/products/${dummyId}`)
-        .then(res => {
-          const fetchedProduct = {
-            id: numericId,
-            name: res.data.title,
-            price: res.data.price,
-            image: res.data.thumbnail,
-            description: res.data.description,
-            category: res.data.category || "Others",
-            rating: res.data.rating || 0
-          };
-          setProduct(fetchedProduct);
-          setSelectedImage(fetchedProduct.image);
-          fetchRelatedDummy(fetchedProduct.category, numericId);
-        })
-        .catch(err => {
-          console.error("DummyJSON fetch error:", err);
-          setProduct(null);
-        })
-        .finally(() => setLoading(false));
-    } else {
+  if (isDummyId) {
+    const dummyId = parseInt(id) - 1000;
+    if (dummyId <= 0 || dummyId > 100) {
       console.warn(`DummyJSON ID ${dummyId} is out of bounds`);
       setProduct(null);
       setLoading(false);
+      return;
     }
+
+    axios.get(`https://dummyjson.com/products/${dummyId}`)
+      .then(res => {
+        const fetchedProduct = {
+          id: parseInt(id),
+          name: res.data.title,
+          price: res.data.price,
+          image: res.data.thumbnail,
+          description: res.data.description,
+          category: res.data.category || "Others",
+          rating: res.data.rating || 0
+        };
+        setProduct(fetchedProduct);
+        setSelectedImage(fetchedProduct.image);
+        fetchRelatedDummy(fetchedProduct.category, parseInt(id));
+        setLoading(false);
+      })
+      .catch(err => {
+        console.error("DummyJSON fetch error:", err);
+        setProduct(null);
+        setLoading(false);
+      });
 
   } else {
     // MongoDB Product
     axios.get(`${backendURL}/api/products/${id}`)
       .then(res => {
         const fetchedProduct = {
-          id: res.data.id,
-          name: res.data.name,
-          price: res.data.price,
-          image: res.data.image,
-          description: res.data.description,
-          category: res.data.category || "Others",
+          ...res.data,
+          id: res.data._id || res.data.id,
           rating: res.data.rating || 4.2
         };
         setProduct(fetchedProduct);
         setSelectedImage(fetchedProduct.image);
         fetchRelatedMongo(fetchedProduct.category, fetchedProduct.id);
+        setLoading(false);
       })
       .catch(err => {
         console.error("MongoDB fetch error:", err);
         setProduct(null);
-      })
-      .finally(() => setLoading(false));
+        setLoading(false);
+      });
   }
 }, [id]);
 
