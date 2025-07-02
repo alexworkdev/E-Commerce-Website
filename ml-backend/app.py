@@ -5,10 +5,11 @@ from collections import Counter, defaultdict
 import math
 
 app = Flask(__name__)
-CORS(app, origins=[
+
+CORS(app, resources={r"/*": {"origins": [
     "https://e-commerce-website-orcin-xi.vercel.app",
     "http://localhost:3000"
-])
+]}}, supports_credentials=True)
 
 # Start with an empty product list
 products = []
