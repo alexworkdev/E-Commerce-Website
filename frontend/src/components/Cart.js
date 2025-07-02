@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';  // <-- added this import
+import { useNavigate } from 'react-router-dom';  
 import './Cart.css';
 
 function Cart({ cartItems = [], updateCartItems }) {
-  const navigate = useNavigate();  // <-- replaced mock with real navigate
+  const navigate = useNavigate();  
 
   const [savedItems, setSavedItems] = useState([]);
   const [coupon, setCoupon] = useState('');
@@ -207,10 +207,33 @@ function Cart({ cartItems = [], updateCartItems }) {
         <div className="cart-summary-section">
           <div className="cart-summary">
             <div className="summary-subtotal">
-              Subtotal ({cartItems.reduce((sum, item) => sum + (item.quantity || 1), 0)} {cartItems.reduce((sum, item) => sum + (item.quantity || 1), 0) === 1 ? 'item' : 'items'}): 
-              <span className="summary-amount">
-                ₹{subtotal.toFixed(2)}
-              </span>
+              {discountApplied > 0 ? (
+                <>
+                  Subtotal ({cartItems.reduce((sum, item) => sum + (item.quantity || 1), 0)} {cartItems.reduce((sum, item) => sum + (item.quantity || 1), 0) === 1 ? 'item' : 'items'}): 
+                  <span className="summary-amount">
+                    ₹{subtotal.toFixed(2)}
+                  </span>
+                  <br />
+                  Discount Applied: 
+                  <span className="summary-discount">
+                    -₹{discount.toFixed(2)}
+                  </span>
+                  <br />
+                  <strong>
+                    Total: 
+                    <span className="summary-final-amount">
+                      ₹{finalAmount.toFixed(2)}
+                    </span>
+                  </strong>
+                </>
+              ) : (
+                <>
+                  Subtotal ({cartItems.reduce((sum, item) => sum + (item.quantity || 1), 0)} {cartItems.reduce((sum, item) => sum + (item.quantity || 1), 0) === 1 ? 'item' : 'items'}): 
+                  <span className="summary-amount">
+                    ₹{subtotal.toFixed(2)}
+                  </span>
+                </>
+              )}
             </div>
 
             <button onClick={goToPayment} className="checkout-button">
