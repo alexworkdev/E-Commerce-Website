@@ -18,17 +18,19 @@ function Header({ cartItems = [], setSearchTerm }) {
   const mlBackendURL = process.env.REACT_APP_ML_BACKEND_URL;
 
   useEffect(() => {
-    const fetchAllProducts = async () => {
-      try {
-        const response = await axios.get(`${process.env.REACT_APP_API_BASE_URL}/api/products`);
-        setAllProducts(response.data);
-      } catch (err) {
-        console.error('Error fetching products:', err);
-      }
-    };
+  const fetchAllProducts = async () => {
+    try {
+      const response = await axios.get(`${backendURL}/api/products`);
+      setAllProducts(response.data);
+    } catch (err) {
+      console.error('Error fetching products:', err);
+    }
+  };
 
+  if (backendURL) {
     fetchAllProducts();
-  }, [backendURL]);
+  }
+}, [backendURL]);
 
   const liveFilterSuggestions = async (searchValue) => {
     if (!searchValue.trim()) {
