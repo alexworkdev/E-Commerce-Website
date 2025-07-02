@@ -3,7 +3,14 @@ from flask_cors import CORS
 import random
 from collections import Counter, defaultdict
 import math
-import requests
+
+# Handle requests import with fallback
+try:
+    import requests
+    REQUESTS_AVAILABLE = True
+except ImportError:
+    REQUESTS_AVAILABLE = False
+    print("⚠️ Warning: 'requests' module not available. Product sync will be disabled.")
 
 app = Flask(__name__)
 
@@ -25,6 +32,10 @@ product_purchases = defaultdict(int)  # product_id -> purchase_count
 
 def sync_products_from_nodejs():
     """Sync products from Node.js backend to ML system"""
+    if not REQUESTS_AVAILABLE:
+        print("❌ Cannot sync products: 'requests' module not available")
+        return False
+        
     try:
         response = requests.get(f"{NODE_JS_BACKEND}/api/products")
         if response.status_code == 200:
@@ -73,9 +84,15 @@ def extract_tags(name, description):
     return found_tags[:5]  # Limit to 5 tags
 
 # Initialize products when the app starts
-@app.before_first_request
 def initialize_products():
     sync_products_from_nodejs()
+
+# Initialize products on first request
+@app.before_request
+def before_first_request():
+    if not hasattr(app, 'products_initialized'):
+        initialize_products()
+        app.products_initialized = True
 
 @app.route('/products', methods=['GET'])
 def get_products():
