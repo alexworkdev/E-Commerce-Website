@@ -8,7 +8,7 @@ const app = express();
 
 app.use(cors({
   origin: [
-    'https://e-commerce-website-7e16rchmp-suman-choudhurys-projects.vercel.app',
+    'https://e-commerce-website-orcin-xi.vercel.app',
     'http://localhost:3000'
   ],
   credentials: true
