@@ -3,6 +3,8 @@ import { useEffect, useState } from 'react';
 import axios from 'axios';
 import './ProductDetails.css';
 
+const backendURL = process.env.REACT_APP_API_BASE_URL;
+
 function ProductDetails({ addToCart }) {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -40,7 +42,7 @@ function ProductDetails({ addToCart }) {
 
     } else {
       // MongoDB Product
-      axios.get(`http://localhost:5000/api/products/${id}`)
+      axios.get(`${backendURL}/api/products/${id}`)
         .then(res => {
           const fetchedProduct = {
             ...res.data,
@@ -81,7 +83,7 @@ function ProductDetails({ addToCart }) {
   };
 
   const fetchRelatedMongo = (category, excludeId) => {
-    axios.get(`http://localhost:5000/api/products?category=${category}`)
+    axios.get(`${backendURL}/api/products?category=${category}`)
       .then(res => {
         const related = res.data
           .filter(p => p._id !== excludeId)
