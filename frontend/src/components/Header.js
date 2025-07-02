@@ -20,7 +20,7 @@ function Header({ cartItems = [], setSearchTerm }) {
   useEffect(() => {
     const fetchAllProducts = async () => {
       try {
-        const response = await axios.get(`${backendURL}/api/products`);
+        const response = await axios.get(`${process.env.REACT_APP_API_BASE_URL}/api/products`);
         setAllProducts(response.data);
       } catch (err) {
         console.error('Error fetching products:', err);
