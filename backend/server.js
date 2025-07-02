@@ -79,6 +79,51 @@ app.get('/api/products', async (req, res) => {
   }
 });
 
+// ✅ Get product by ID (New Route)
+app.get('/api/products/:id', async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    if (parseInt(id) >= 1000) {
+      // DummyJSON Product
+      const dummyId = parseInt(id) - 1000;
+      const dummyRes = await axios.get(`https://dummyjson.com/products/${dummyId}`);
+      const p = dummyRes.data;
+
+      const product = {
+        id: id,
+        name: p.title,
+        price: p.price,
+        image: p.thumbnail,
+        description: p.description,
+        category: p.category || "Others",
+        isMongo: false
+      };
+      return res.json(product);
+
+    } else {
+      // MongoDB Product
+      const product = await productsCollection.findOne({ _id: new ObjectId(id) });
+      if (!product) {
+        return res.status(404).json({ error: "Product not found" });
+      }
+      const formattedProduct = {
+        id: product._id.toString(),
+        name: product.name,
+        price: product.price,
+        image: product.image,
+        description: product.description,
+        category: product.category || "Others",
+        isMongo: true
+      };
+      return res.json(formattedProduct);
+    }
+  } catch (err) {
+    console.error('Fetch product by ID error:', err);
+    res.status(500).json({ error: "Failed to fetch product" });
+  }
+});
+
 // Get Unique Categories
 app.get('/api/categories', async (req, res) => {
   try {
