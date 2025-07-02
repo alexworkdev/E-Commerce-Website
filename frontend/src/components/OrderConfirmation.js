@@ -10,14 +10,40 @@ function OrderConfirmation({ addToCart, clearCart }) {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const history = JSON.parse(localStorage.getItem('cart')) || [];
+    // Get purchase history from localStorage 
+    let history = JSON.parse(localStorage.getItem('purchaseHistory')) || [];
+    
+    // If no purchase history exists, try to get the last cart items before they were cleared
+    if (history.length === 0) {
+      history = JSON.parse(localStorage.getItem('lastPurchasedItems')) || [];
+    }
+
+    // Store the current cart items as purchase history before clearing
+    const currentCart = JSON.parse(localStorage.getItem('cart')) || [];
+    if (currentCart.length > 0) {
+      // Add current cart items to purchase history
+      const existingHistory = JSON.parse(localStorage.getItem('purchaseHistory')) || [];
+      const updatedHistory = [...existingHistory, ...currentCart];
+      localStorage.setItem('purchaseHistory', JSON.stringify(updatedHistory));
+      
+      // Also store as last purchased items for immediate use
+      localStorage.setItem('lastPurchasedItems', JSON.stringify(currentCart));
+      
+      // Use the current cart as history for recommendations
+      history = currentCart;
+    }
+
     const boughtIds = history.map(p => p.id);
 
-    // Fetch recommendations from MongoDB backend
-    axios.post('http://localhost:5000/api/recommend', { history })
+    console.log('Purchase history for recommendations:', history);
+
+    // Fetch recommendations from ML backend (correct port and endpoint)
+    axios.post('http://localhost:5001/recommend', { history })
       .then(res => {
-        const mongoRecommended = res.data.filter(p => !boughtIds.includes(p._id)).map(p => ({
-          id: p._id,
+        // ML backend returns recommendations directly
+        const mlRecommendations = res.data.recommendations || res.data;
+        const formattedRecommendations = mlRecommendations.map(p => ({
+          id: p.id,
           name: p.name,
           price: p.price,
           image: p.image,
@@ -25,35 +51,61 @@ function OrderConfirmation({ addToCart, clearCart }) {
           category: p.category
         }));
 
-        // Fetch DummyJSON recommendations to show variety
-        axios.get('https://dummyjson.com/products?limit=100')
-          .then(dummyRes => {
-            const dummyRecommended = dummyRes.data.products
-              .filter(p => !boughtIds.includes(p.id + 1000))
-              .slice(0, 4)
-              .map(p => ({
-                id: p.id + 1000,
-                name: p.title,
-                price: p.price,
-                image: p.thumbnail,
-                description: p.description,
-                category: p.category || "Others"
-              }));
-
-            setRecommended([...mongoRecommended, ...dummyRecommended]);
-            setLoading(false);
-          })
-          .catch(err => {
-            console.error("DummyJSON fetch error:", err);
-            setRecommended(mongoRecommended);
-            setLoading(false);
-          });
+        setRecommended(formattedRecommendations);
+        setLoading(false);
       })
       .catch(err => {
-        console.error("MongoDB recommendation error:", err);
-        setLoading(false);
+        console.error("ML backend recommendation error:", err);
+        
+        // Fallback: Try to get products directly from your Node.js backend
+        axios.get('https://e-commerce-website-3-uo7o.onrender.com/api/products')
+          .then(nodeRes => {
+            const allProducts = nodeRes.data;
+            // Filter out purchased items and get random recommendations
+            const availableProducts = allProducts.filter(p => !boughtIds.includes(p.id));
+            
+            // Shuffle and take first 6 as recommendations
+            const shuffled = availableProducts.sort(() => 0.5 - Math.random());
+            const fallbackRecommended = shuffled.slice(0, 6).map(p => ({
+              id: p.id,
+              name: p.name,
+              price: p.price,
+              image: p.image,
+              description: p.description,
+              category: p.category
+            }));
+
+            setRecommended(fallbackRecommended);
+            setLoading(false);
+          })
+          .catch(fallbackErr => {
+            console.error("Fallback recommendation error:", fallbackErr);
+            
+            // Final fallback: Use DummyJSON
+            axios.get('https://dummyjson.com/products?limit=8')
+              .then(dummyRes => {
+                const finalFallback = dummyRes.data.products
+                  .slice(0, 6)
+                  .map(p => ({
+                    id: p.id + 1000,
+                    name: p.title,
+                    price: p.price,
+                    image: p.thumbnail,
+                    description: p.description,
+                    category: p.category || "Others"
+                  }));
+
+                setRecommended(finalFallback);
+                setLoading(false);
+              })
+              .catch(finalErr => {
+                console.error("Final fallback error:", finalErr);
+                setLoading(false);
+              });
+          });
       });
 
+    // Clear cart after storing purchase history
     if (clearCart) {
       clearCart();
     }
