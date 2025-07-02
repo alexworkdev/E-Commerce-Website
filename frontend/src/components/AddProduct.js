@@ -23,7 +23,7 @@ function AddProduct({ onProductAdded }) {
       try {
         const [dummyRes, mongoRes] = await Promise.all([
           axios.get('https://dummyjson.com/products/categories'),
-          axios.get(`${API_BASE_URL}/api/products`)
+          axios.get(`${backendURL}/api/products`)
         ]);
 
         const dummyCategories = dummyRes.data.map(cat =>
@@ -65,7 +65,7 @@ function AddProduct({ onProductAdded }) {
       category: category.trim()
     };
 
-    axios.post(`${API_BASE_URL}/api/add-product`, payload)
+    axios.post(`${backendURL}/api/add-product`, payload)
       .then(() => {
         toast.success("✅ Product added successfully!");
         if (onProductAdded) onProductAdded();
