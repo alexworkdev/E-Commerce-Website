@@ -4,6 +4,10 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import './AddProduct.css';
 
+// Fetch Backend URLs from .env
+const backendURL = process.env.REACT_APP_API_BASE_URL;
+const mlBackendURL = process.env.REACT_APP_ML_BACKEND_URL;
+
 function AddProduct({ onProductAdded }) {
   const [name, setName] = useState('');
   const [price, setPrice] = useState('');
@@ -19,7 +23,7 @@ function AddProduct({ onProductAdded }) {
       try {
         const [dummyRes, mongoRes] = await Promise.all([
           axios.get('https://dummyjson.com/products/categories'),
-          axios.get('http://localhost:5001/products')
+          axios.get(`${API_BASE_URL}/api/products`)
         ]);
 
         const dummyCategories = dummyRes.data.map(cat =>
@@ -37,7 +41,6 @@ function AddProduct({ onProductAdded }) {
 
       } catch (err) {
         console.error("Category fetch error:", err);
-        // Removed toast error for failed category loading
       }
     };
 
@@ -62,7 +65,7 @@ function AddProduct({ onProductAdded }) {
       category: category.trim()
     };
 
-    axios.post('http://localhost:5001/add-product', payload)
+    axios.post(`${API_BASE_URL}/api/add-product`, payload)
       .then(() => {
         toast.success("✅ Product added successfully!");
         if (onProductAdded) onProductAdded();
@@ -84,7 +87,7 @@ function AddProduct({ onProductAdded }) {
         </div>
 
         <form onSubmit={handleSubmit} className="product-form">
-          
+
           <div className="form-group">
             <label className="form-label">Product Category <span className="required">*</span></label>
             <input
