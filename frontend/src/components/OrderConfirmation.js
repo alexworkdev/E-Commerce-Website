@@ -9,8 +9,53 @@ function OrderConfirmation({ addToCart, clearCart }) {
   const [buttonStates, setButtonStates] = useState({});
   const navigate = useNavigate();
 
+  // Smart recommendation algorithm 
+  const generateSmartRecommendations = (purchasedItems, allProducts) => {
+    if (!purchasedItems.length) {
+      // No purchase history - return first 6 products consistently
+      return allProducts.slice(0, 6);
+    }
+
+    const purchasedIds = new Set(purchasedItems.map(item => item.id));
+    const purchasedCategories = [...new Set(purchasedItems.map(item => item.category))];
+    const avgPurchasePrice = purchasedItems.reduce((sum, item) => sum + (item.price || 0), 0) / purchasedItems.length;
+    
+    // Filter out already purchased items
+    const availableProducts = allProducts.filter(product => !purchasedIds.has(product.id));
+    
+    // Score products based on similarity to purchased items
+    const scoredProducts = availableProducts.map(product => {
+      let score = 0;
+      
+      // Category match (high priority)
+      if (purchasedCategories.includes(product.category)) {
+        score += 50;
+      }
+      
+      // Price similarity 
+      if (avgPurchasePrice > 0) {
+        const priceDiff = Math.abs((product.price || 0) - avgPurchasePrice);
+        const priceScore = Math.max(0, 30 - (priceDiff / avgPurchasePrice) * 30);
+        score += priceScore;
+      }
+      
+      // Add product ID as tiebreaker for consistent ordering
+      score += (product.id % 100) / 100;
+      
+      return { ...product, score };
+    });
+    
+    // Sort by score (highest first) and return top 6
+    return scoredProducts
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 6)
+      .map(({ score, ...product }) => product);
+  };
+
   useEffect(() => {
-    // Get purchase history from localStorage 
+    let isMounted = true;
+    
+    // Get purchase history from localStorage (not the current cart)
     let history = JSON.parse(localStorage.getItem('purchaseHistory')) || [];
     
     // If no purchase history exists, try to get the last cart items before they were cleared
@@ -33,40 +78,23 @@ function OrderConfirmation({ addToCart, clearCart }) {
       history = currentCart;
     }
 
-    const boughtIds = history.map(p => p.id);
-
     console.log('Purchase history for recommendations:', history);
 
-    // Fetch recommendations from ML backend (correct port and endpoint)
-    axios.post('http://localhost:5001/recommend', { history })
-      .then(res => {
-        // ML backend returns recommendations directly
-        const mlRecommendations = res.data.recommendations || res.data;
-        const formattedRecommendations = mlRecommendations.map(p => ({
-          id: p.id,
-          name: p.name,
-          price: p.price,
-          image: p.image,
-          description: p.description,
-          category: p.category
-        }));
-
-        setRecommended(formattedRecommendations);
-        setLoading(false);
-      })
-      .catch(err => {
-        console.error("ML backend recommendation error:", err);
+    // Single API call strategy with proper timeout and error handling
+    const fetchRecommendations = async () => {
+      try {
+        // Try ML backend first with timeout
+        const mlResponse = await Promise.race([
+          axios.post('http://localhost:5001/recommend', { history }),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('ML timeout')), 2000)
+          )
+        ]);
         
-        // Fallback: Try to get products directly from your Node.js backend
-        axios.get('https://e-commerce-website-3-uo7o.onrender.com/api/products')
-          .then(nodeRes => {
-            const allProducts = nodeRes.data;
-            // Filter out purchased items and get random recommendations
-            const availableProducts = allProducts.filter(p => !boughtIds.includes(p.id));
-            
-            // Shuffle and take first 6 as recommendations
-            const shuffled = availableProducts.sort(() => 0.5 - Math.random());
-            const fallbackRecommended = shuffled.slice(0, 6).map(p => ({
+        if (isMounted && mlResponse.data) {
+          const mlRecommendations = mlResponse.data.recommendations || mlResponse.data;
+          if (Array.isArray(mlRecommendations) && mlRecommendations.length > 0) {
+            const formattedRecommendations = mlRecommendations.slice(0, 6).map(p => ({
               id: p.id,
               name: p.name,
               price: p.price,
@@ -74,41 +102,74 @@ function OrderConfirmation({ addToCart, clearCart }) {
               description: p.description,
               category: p.category
             }));
-
-            setRecommended(fallbackRecommended);
+            setRecommended(formattedRecommendations);
             setLoading(false);
-          })
-          .catch(fallbackErr => {
-            console.error("Fallback recommendation error:", fallbackErr);
-            
-            // Final fallback: Use DummyJSON
-            axios.get('https://dummyjson.com/products?limit=8')
-              .then(dummyRes => {
-                const finalFallback = dummyRes.data.products
-                  .slice(0, 6)
-                  .map(p => ({
-                    id: p.id + 1000,
-                    name: p.title,
-                    price: p.price,
-                    image: p.thumbnail,
-                    description: p.description,
-                    category: p.category || "Others"
-                  }));
+            return;
+          }
+        }
+      } catch (mlError) {
+        console.log("ML backend unavailable, using fallback");
+      }
 
-                setRecommended(finalFallback);
-                setLoading(false);
-              })
-              .catch(finalErr => {
-                console.error("Final fallback error:", finalErr);
-                setLoading(false);
-              });
-          });
-      });
+      // Fallback to main API with smart recommendations
+      try {
+        const nodeResponse = await axios.get('https://e-commerce-website-3-uo7o.onrender.com/api/products');
+        
+        if (isMounted && nodeResponse.data) {
+          const smartRecommendations = generateSmartRecommendations(history, nodeResponse.data);
+          const formattedRecommendations = smartRecommendations.map(p => ({
+            id: p.id,
+            name: p.name,
+            price: p.price,
+            image: p.image,
+            description: p.description,
+            category: p.category
+          }));
+          
+          setRecommended(formattedRecommendations);
+          setLoading(false);
+          return;
+        }
+      } catch (nodeError) {
+        console.log("Main API unavailable, using final fallback");
+      }
+
+      // Final fallback with consistent selection
+      try {
+        const dummyResponse = await axios.get('https://dummyjson.com/products?limit=20');
+        
+        if (isMounted && dummyResponse.data?.products) {
+          const dummyProducts = dummyResponse.data.products.map(p => ({
+            id: p.id + 1000,
+            name: p.title,
+            price: p.price,
+            image: p.thumbnail,
+            description: p.description,
+            category: p.category || "Others"
+          }));
+          
+          const smartRecommendations = generateSmartRecommendations(history, dummyProducts);
+          setRecommended(smartRecommendations);
+          setLoading(false);
+        }
+      } catch (finalError) {
+        console.error("All recommendation sources failed:", finalError);
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    fetchRecommendations();
 
     // Clear cart after storing purchase history
     if (clearCart) {
       clearCart();
     }
+
+    return () => {
+      isMounted = false;
+    };
   }, [clearCart]);
 
   const handleViewDetails = (product) => {
