@@ -5,7 +5,12 @@ const { MongoClient, ObjectId } = require('mongodb');
 const axios = require('axios');
 
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: [
+    'https://e-commerce-website-7ruc6scam-suman-choudhurys-projects.vercel.app',
+    'http://localhost:3000'  // for local development
+  ]}));
+
 app.use(express.json());
 
 // MongoDB Setup
