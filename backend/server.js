@@ -4,7 +4,7 @@ const cors = require('cors');
 const { MongoClient, ObjectId } = require('mongodb');
 const axios = require('axios');
 
-const app = express();  
+const app = express();
 
 app.use(cors({
   origin: [
@@ -57,15 +57,19 @@ app.get('/api/products', async (req, res) => {
     }));
 
     const dummyRes = await axios.get('https://dummyjson.com/products?limit=100');
-    let dummyProducts = dummyRes.data.products.map(p => ({
-      id: (p.id + 1000).toString(),
-      name: p.title,
-      price: p.price,
-      image: p.thumbnail,
-      description: p.description,
-      category: p.category || "Others",
-      isMongo: false
-    }));
+    let dummyProducts = Array.isArray(dummyRes.data.products)
+      ? dummyRes.data.products
+          .filter(p => typeof p.id === 'number' && p.id > 0 && p.id <= 100)  // Safe ID range
+          .map(p => ({
+            id: (p.id + 1000).toString(),
+            name: p.title,
+            price: p.price,
+            image: p.thumbnail,
+            description: p.description,
+            category: p.category || "Others",
+            isMongo: false
+          }))
+      : [];
 
     if (category && category !== 'All') {
       dummyProducts = dummyProducts.filter(p => p.category === category);
@@ -74,19 +78,24 @@ app.get('/api/products', async (req, res) => {
     res.json([...formattedMongo, ...dummyProducts]);
 
   } catch (err) {
-    console.error('Fetch products error:', err);
+    console.error('Fetch products error:', err.message);
     res.status(500).json({ error: "Failed to fetch products" });
   }
 });
 
-// ✅ Get product by ID (New Route)
+// Get product by ID
 app.get('/api/products/:id', async (req, res) => {
   const { id } = req.params;
 
   try {
     if (parseInt(id) >= 1000) {
-      // DummyJSON Product
       const dummyId = parseInt(id) - 1000;
+
+      if (dummyId <= 0 || dummyId > 100) {
+        console.log(`DummyJSON ID ${dummyId} is out of bounds`);
+        return res.status(404).json({ error: "Invalid DummyJSON Product ID" });
+      }
+
       const dummyRes = await axios.get(`https://dummyjson.com/products/${dummyId}`);
       const p = dummyRes.data;
 
@@ -102,7 +111,6 @@ app.get('/api/products/:id', async (req, res) => {
       return res.json(product);
 
     } else {
-      // MongoDB Product
       const product = await productsCollection.findOne({ _id: new ObjectId(id) });
       if (!product) {
         return res.status(404).json({ error: "Product not found" });
@@ -119,7 +127,7 @@ app.get('/api/products/:id', async (req, res) => {
       return res.json(formattedProduct);
     }
   } catch (err) {
-    console.error('Fetch product by ID error:', err);
+    console.error('Fetch product by ID error:', err.message);
     res.status(500).json({ error: "Failed to fetch product" });
   }
 });
@@ -129,11 +137,11 @@ app.get('/api/categories', async (req, res) => {
   try {
     const mongoCategories = await productsCollection.distinct("category");
     const dummyRes = await axios.get('https://dummyjson.com/products/categories');
-    const dummyCategories = dummyRes.data;
+    const dummyCategories = Array.isArray(dummyRes.data) ? dummyRes.data : [];
     const combined = Array.from(new Set([...mongoCategories, ...dummyCategories])).filter(Boolean);
     res.json(combined);
   } catch (err) {
-    console.error('Fetch categories error:', err);
+    console.error('Fetch categories error:', err.message);
     res.status(500).json({ error: "Failed to fetch categories" });
   }
 });
@@ -149,7 +157,7 @@ app.post('/api/add-product', async (req, res) => {
     await productsCollection.insertOne(newProduct);
     res.json({ message: "Product added successfully", product: newProduct });
   } catch (err) {
-    console.error('Add product error:', err);
+    console.error('Add product error:', err.message);
     res.status(500).json({ error: "Failed to add product" });
   }
 });
@@ -164,7 +172,7 @@ app.delete('/api/delete-product/:id', async (req, res) => {
     }
     res.json({ message: "Product deleted successfully" });
   } catch (err) {
-    console.error('Delete product error:', err);
+    console.error('Delete product error:', err.message);
     res.status(500).json({ error: "Failed to delete product" });
   }
 });
@@ -176,32 +184,37 @@ app.post('/api/recommend', async (req, res) => {
     const boughtIds = history.map(item => item.id.toString());
 
     const mongoProducts = await productsCollection.find({}).toArray();
-    const filteredMongo = mongoProducts.filter(p => !boughtIds.includes(p._id.toString())).map(p => ({
-      id: p._id.toString(),
-      name: p.name,
-      price: p.price,
-      image: p.image,
-      description: p.description,
-      category: p.category || "Others",
-      isMongo: true
-    }));
+    const filteredMongo = mongoProducts
+      .filter(p => !boughtIds.includes(p._id.toString()))
+      .map(p => ({
+        id: p._id.toString(),
+        name: p.name,
+        price: p.price,
+        image: p.image,
+        description: p.description,
+        category: p.category || "Others",
+        isMongo: true
+      }));
 
     const dummyRes = await axios.get('https://dummyjson.com/products?limit=100');
-    const filteredDummy = dummyRes.data.products.filter(p => !boughtIds.includes((p.id + 1000).toString())).map(p => ({
-      id: (p.id + 1000).toString(),
-      name: p.title,
-      price: p.price,
-      image: p.thumbnail,
-      description: p.description,
-      category: p.category || "Others",
-      isMongo: false
-    }));
+    const filteredDummy = dummyRes.data.products
+      .filter(p => typeof p.id === 'number' && p.id > 0 && p.id <= 100)
+      .filter(p => !boughtIds.includes((p.id + 1000).toString()))
+      .map(p => ({
+        id: (p.id + 1000).toString(),
+        name: p.title,
+        price: p.price,
+        image: p.thumbnail,
+        description: p.description,
+        category: p.category || "Others",
+        isMongo: false
+      }));
 
     const recommendations = [...filteredMongo, ...filteredDummy].slice(0, 10);
     res.json(recommendations);
 
   } catch (err) {
-    console.error('Recommendations error:', err);
+    console.error('Recommendations error:', err.message);
     res.status(500).json({ error: "Failed to fetch recommendations" });
   }
 });
