@@ -57,9 +57,9 @@ app.get('/api/products', async (req, res) => {
     }));
 
     const dummyRes = await axios.get('https://dummyjson.com/products?limit=100');
-    let dummyProducts = Array.isArray(dummyRes.data.products)
+    const dummyProducts = Array.isArray(dummyRes.data.products)
       ? dummyRes.data.products
-          .filter(p => typeof p.id === 'number' && p.id > 0 && p.id <= 100)  // Safe ID range
+          .filter(p => typeof p.id === 'number' && p.id > 0 && p.id <= 100)
           .map(p => ({
             id: (p.id + 1000).toString(),
             name: p.title,
@@ -71,11 +71,11 @@ app.get('/api/products', async (req, res) => {
           }))
       : [];
 
-    if (category && category !== 'All') {
-      dummyProducts = dummyProducts.filter(p => p.category === category);
-    }
+    const finalProducts = category && category !== 'All'
+      ? [...formattedMongo, ...dummyProducts.filter(p => p.category === category)]
+      : [...formattedMongo, ...dummyProducts];
 
-    res.json([...formattedMongo, ...dummyProducts]);
+    res.json(finalProducts);
 
   } catch (err) {
     console.error('Fetch products error:', err.message);
@@ -83,13 +83,16 @@ app.get('/api/products', async (req, res) => {
   }
 });
 
-// Get product by ID
+// Get product by ID (Fixes applied)
 app.get('/api/products/:id', async (req, res) => {
   const { id } = req.params;
 
   try {
-    if (parseInt(id) >= 1000) {
-      const dummyId = parseInt(id) - 1000;
+    const numericId = parseInt(id);
+    const isDummy = !isNaN(numericId) && numericId >= 1000;
+
+    if (isDummy) {
+      const dummyId = numericId - 1000;
 
       if (dummyId <= 0 || dummyId > 100) {
         console.log(`DummyJSON ID ${dummyId} is out of bounds`);
@@ -99,7 +102,7 @@ app.get('/api/products/:id', async (req, res) => {
       const dummyRes = await axios.get(`https://dummyjson.com/products/${dummyId}`);
       const p = dummyRes.data;
 
-      const product = {
+      return res.json({
         id: id,
         name: p.title,
         price: p.price,
@@ -107,15 +110,19 @@ app.get('/api/products/:id', async (req, res) => {
         description: p.description,
         category: p.category || "Others",
         isMongo: false
-      };
-      return res.json(product);
+      });
 
     } else {
+      if (!ObjectId.isValid(id)) {
+        return res.status(400).json({ error: "Invalid MongoDB Product ID" });
+      }
+
       const product = await productsCollection.findOne({ _id: new ObjectId(id) });
       if (!product) {
         return res.status(404).json({ error: "Product not found" });
       }
-      const formattedProduct = {
+
+      return res.json({
         id: product._id.toString(),
         name: product.name,
         price: product.price,
@@ -123,8 +130,7 @@ app.get('/api/products/:id', async (req, res) => {
         description: product.description,
         category: product.category || "Others",
         isMongo: true
-      };
-      return res.json(formattedProduct);
+      });
     }
   } catch (err) {
     console.error('Fetch product by ID error:', err.message);
@@ -166,6 +172,9 @@ app.post('/api/add-product', async (req, res) => {
 app.delete('/api/delete-product/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).json({ error: "Invalid Product ID" });
+    }
     const result = await productsCollection.deleteOne({ _id: new ObjectId(id) });
     if (result.deletedCount === 0) {
       return res.status(404).json({ error: "Product not found" });
