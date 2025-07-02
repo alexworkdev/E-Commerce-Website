@@ -83,22 +83,42 @@ app.get('/api/products', async (req, res) => {
   }
 });
 
-// Get product by ID (Fixes applied)
+// Get product by ID (FIXED VERSION)
 app.get('/api/products/:id', async (req, res) => {
   const { id } = req.params;
 
   try {
+    // First, check if it's a valid MongoDB ObjectId
+    if (ObjectId.isValid(id)) {
+      console.log(`Attempting to fetch MongoDB product with ID: ${id}`);
+      
+      const product = await productsCollection.findOne({ _id: new ObjectId(id) });
+      if (product) {
+        console.log(`Found MongoDB product: ${product.name}`);
+        return res.json({
+          id: product._id.toString(),
+          name: product.name,
+          price: product.price,
+          image: product.image,
+          description: product.description,
+          category: product.category || "Others",
+          isMongo: true
+        });
+      }
+    }
+
+    // If not found in MongoDB, check if it's a DummyJSON product
     const numericId = parseInt(id);
-    const isDummy = !isNaN(numericId) && numericId >= 1000;
-
-    if (isDummy) {
+    if (!isNaN(numericId) && numericId >= 1000) {
       const dummyId = numericId - 1000;
-
+      
       if (dummyId <= 0 || dummyId > 100) {
         console.log(`DummyJSON ID ${dummyId} is out of bounds`);
         return res.status(404).json({ error: "Invalid DummyJSON Product ID" });
       }
 
+      console.log(`Attempting to fetch DummyJSON product with ID: ${dummyId}`);
+      
       const dummyRes = await axios.get(`https://dummyjson.com/products/${dummyId}`);
       const p = dummyRes.data;
 
@@ -111,27 +131,12 @@ app.get('/api/products/:id', async (req, res) => {
         category: p.category || "Others",
         isMongo: false
       });
-
-    } else {
-      if (!ObjectId.isValid(id)) {
-        return res.status(400).json({ error: "Invalid MongoDB Product ID" });
-      }
-
-      const product = await productsCollection.findOne({ _id: new ObjectId(id) });
-      if (!product) {
-        return res.status(404).json({ error: "Product not found" });
-      }
-
-      return res.json({
-        id: product._id.toString(),
-        name: product.name,
-        price: product.price,
-        image: product.image,
-        description: product.description,
-        category: product.category || "Others",
-        isMongo: true
-      });
     }
+
+    // If we reach here, the product was not found anywhere
+    console.log(`Product with ID ${id} not found in MongoDB or DummyJSON`);
+    return res.status(404).json({ error: "Product not found" });
+
   } catch (err) {
     console.error('Fetch product by ID error:', err.message);
     res.status(500).json({ error: "Failed to fetch product" });
