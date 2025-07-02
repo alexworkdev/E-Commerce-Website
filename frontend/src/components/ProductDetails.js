@@ -16,9 +16,16 @@ function ProductDetails({ addToCart }) {
   useEffect(() => {
     setLoading(true);
 
-    if (id >= 1000) {
+    if (!backendURL) {
+      console.error("❌ Backend URL not configured in .env");
+      setProduct(null);
+      setLoading(false);
+      return;
+    }
+
+    if (parseInt(id) >= 1000) {
       // DummyJSON Product
-      axios.get(`https://dummyjson.com/products/${id - 1000}`)
+      axios.get(`https://dummyjson.com/products/${parseInt(id) - 1000}`)
         .then(res => {
           const fetchedProduct = {
             id: parseInt(id),
@@ -32,33 +39,35 @@ function ProductDetails({ addToCart }) {
           setProduct(fetchedProduct);
           setSelectedImage(fetchedProduct.image);
           fetchRelatedDummy(fetchedProduct.category, parseInt(id));
-          setLoading(false);
         })
         .catch(err => {
           console.error("DummyJSON fetch error:", err);
           setProduct(null);
-          setLoading(false);
-        });
+        })
+        .finally(() => setLoading(false));
 
     } else {
       // MongoDB Product
       axios.get(`${backendURL}/api/products/${id}`)
         .then(res => {
           const fetchedProduct = {
-            ...res.data,
-            id: res.data._id,
+            id: res.data.id,
+            name: res.data.name,
+            price: res.data.price,
+            image: res.data.image,
+            description: res.data.description,
+            category: res.data.category || "Others",
             rating: res.data.rating || 4.2
           };
           setProduct(fetchedProduct);
           setSelectedImage(fetchedProduct.image);
-          fetchRelatedMongo(fetchedProduct.category, fetchedProduct._id);
-          setLoading(false);
+          fetchRelatedMongo(fetchedProduct.category, fetchedProduct.id);
         })
         .catch(err => {
           console.error("MongoDB fetch error:", err);
           setProduct(null);
-          setLoading(false);
-        });
+        })
+        .finally(() => setLoading(false));
     }
   }, [id]);
 
@@ -66,7 +75,7 @@ function ProductDetails({ addToCart }) {
     axios.get(`https://dummyjson.com/products/category/${category}`)
       .then(res => {
         const related = res.data.products
-          .filter(p => p.id + 1000 !== excludeId)
+          .filter(p => (p.id + 1000).toString() !== excludeId.toString())
           .slice(0, 4)
           .map(p => ({
             id: p.id + 1000,
@@ -83,13 +92,15 @@ function ProductDetails({ addToCart }) {
   };
 
   const fetchRelatedMongo = (category, excludeId) => {
+    if (!backendURL) return;
+
     axios.get(`${backendURL}/api/products?category=${category}`)
       .then(res => {
         const related = res.data
-          .filter(p => p._id !== excludeId)
+          .filter(p => p.id.toString() !== excludeId.toString())
           .slice(0, 4)
           .map(p => ({
-            id: p._id,
+            id: p.id,
             name: p.name,
             price: p.price,
             image: p.image,
