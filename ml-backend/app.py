@@ -3,6 +3,7 @@ from flask_cors import CORS
 import random
 from collections import Counter, defaultdict
 import math
+import requests
 
 app = Flask(__name__)
 
@@ -10,6 +11,9 @@ CORS(app, resources={r"/*": {"origins": [
     "https://e-commerce-website-orcin-xi.vercel.app",
     "http://localhost:3000"
 ]}}, supports_credentials=True)
+
+# Configuration for Node.js backend
+NODE_JS_BACKEND = "https://e-commerce-website-3-uo7o.onrender.com"
 
 # Start with an empty product list
 products = []
@@ -19,6 +23,60 @@ user_purchases = defaultdict(list)  # user_id -> [product_ids]
 product_views = defaultdict(int)    # product_id -> view_count
 product_purchases = defaultdict(int)  # product_id -> purchase_count
 
+def sync_products_from_nodejs():
+    """Sync products from Node.js backend to ML system"""
+    try:
+        response = requests.get(f"{NODE_JS_BACKEND}/api/products")
+        if response.status_code == 200:
+            fetched_products = response.json()
+            
+            # Clear existing products and update with fresh data
+            global products
+            products = []
+            
+            for product in fetched_products:
+                ml_product = {
+                    "id": product.get("id"),
+                    "name": product.get("name"),
+                    "price": float(product.get("price", 0)),
+                    "image": product.get("image"),
+                    "description": product.get("description", ""),
+                    "category": product.get("category", "Others"),
+                    "rating": round(random.uniform(3.5, 5.0), 1),
+                    "reviews": random.randint(10, 500),
+                    "tags": extract_tags(product.get("name", ""), product.get("description", ""))
+                }
+                products.append(ml_product)
+            
+            print(f"✅ Synced {len(products)} products from Node.js backend")
+            return True
+        else:
+            print(f"❌ Failed to sync products: {response.status_code}")
+            return False
+    except Exception as e:
+        print(f"❌ Error syncing products: {str(e)}")
+        return False
+
+def extract_tags(name, description):
+    """Extract relevant tags from product name and description"""
+    text = (name + " " + description).lower()
+    
+    # Common product attributes to look for
+    keywords = [
+        'wireless', 'bluetooth', 'smart', 'premium', 'portable', 'waterproof',
+        'leather', 'cotton', 'organic', 'eco-friendly', 'rechargeable',
+        'lightweight', 'durable', 'comfortable', 'stylish', 'modern',
+        'vintage', 'classic', 'professional', 'gaming', 'fitness'
+    ]
+    
+    found_tags = [keyword for keyword in keywords if keyword in text]
+    return found_tags[:5]  # Limit to 5 tags
+
+# Initialize products when the app starts
+@app.before_first_request
+def initialize_products():
+    sync_products_from_nodejs()
+
 @app.route('/products', methods=['GET'])
 def get_products():
     print("✅ [GET] /products called - Returning all products")
@@ -27,6 +85,15 @@ def get_products():
 @app.route('/', methods=['GET'])
 def home():
     return "✅ Enhanced Recommendation API is Running"
+
+@app.route('/sync-products', methods=['POST'])
+def manual_sync():
+    """Manually trigger product synchronization"""
+    success = sync_products_from_nodejs()
+    if success:
+        return jsonify({"message": f"Successfully synced {len(products)} products"})
+    else:
+        return jsonify({"error": "Failed to sync products"}), 500
 
 @app.route('/delete-product/<int:product_id>', methods=['DELETE'])
 def delete_product(product_id):
@@ -66,21 +133,6 @@ def add_product():
     
     print(f"✅ Product added: {new_product['name']} (ID: {new_id})")
     return jsonify({"message": "Product added", "product": new_product})
-
-def extract_tags(name, description):
-    """Extract relevant tags from product name and description"""
-    text = (name + " " + description).lower()
-    
-    # Common product attributes to look for
-    keywords = [
-        'wireless', 'bluetooth', 'smart', 'premium', 'portable', 'waterproof',
-        'leather', 'cotton', 'organic', 'eco-friendly', 'rechargeable',
-        'lightweight', 'durable', 'comfortable', 'stylish', 'modern',
-        'vintage', 'classic', 'professional', 'gaming', 'fitness'
-    ]
-    
-    found_tags = [keyword for keyword in keywords if keyword in text]
-    return found_tags[:5]  # Limit to 5 tags
 
 def calculate_similarity(product1, product2):
     """Calculate similarity between two products"""
