@@ -7,7 +7,7 @@ const axios = require('axios');
 const app = express();
 app.use(cors({
   origin: [
-    'https://e-commerce-website-7ruc6scam-suman-choudhurys-projects.vercel.app',
+    'https://e-commerce-website-7e16rchmp-suman-choudhurys-projects.vercel.app/',
     'http://localhost:3000'  // for local development
   ]}));
 
