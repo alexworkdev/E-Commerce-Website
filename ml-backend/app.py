@@ -6,7 +6,7 @@ import math
 
 app = Flask(__name__)
 CORS(app, origins=[
-    "https://e-commerce-website-7e16rchmp-suman-choudhurys-projects.vercel.app",
+    "https://e-commerce-website-orcin-xi.vercel.app",
     "http://localhost:3000"
 ])
 
