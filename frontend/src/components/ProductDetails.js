@@ -4,6 +4,7 @@ import axios from 'axios';
 import './ProductDetails.css';
 
 const backendURL = process.env.REACT_APP_API_BASE_URL;
+const mlBackendURL = process.env.REACT_APP_ML_API_BASE_URL; 
 
 function ProductDetails({ addToCart }) {
   const { id } = useParams();
@@ -41,7 +42,11 @@ function ProductDetails({ addToCart }) {
         };
         setProduct(fetchedProduct);
         setSelectedImage(fetchedProduct.image);
-        fetchRelatedDummy(fetchedProduct.category, parseInt(id));
+        
+        // Track view and fetch ML recommendations for DummyJSON products
+        trackProductView(fetchedProduct.id);
+        fetchMLRecommendations(fetchedProduct);
+        
         setLoading(false);
       })
       .catch(err => {
@@ -61,7 +66,11 @@ function ProductDetails({ addToCart }) {
         };
         setProduct(fetchedProduct);
         setSelectedImage(fetchedProduct.image);
-        fetchRelatedMongo(fetchedProduct.category, fetchedProduct.id);
+        
+        // Track view and fetch ML recommendations for MongoDB products
+        trackProductView(fetchedProduct.id);
+        fetchMLRecommendations(fetchedProduct);
+        
         setLoading(false);
       })
       .catch(err => {
@@ -72,6 +81,68 @@ function ProductDetails({ addToCart }) {
   }
 }, [id]);
 
+  // Track product view for ML system
+  const trackProductView = async (productId) => {
+    try {
+      await axios.post(`${mlBackendURL}/track-view`, {
+        product_id: productId
+      });
+      console.log(`✅ Tracked view for product ${productId}`);
+    } catch (err) {
+      console.error("Failed to track view:", err);
+    }
+  };
+
+  // Fetch ML-based recommendations
+  const fetchMLRecommendations = async (currentProduct) => {
+    try {
+      // Get user's purchase history from localStorage (or your state management)
+      const purchaseHistory = JSON.parse(localStorage.getItem('purchaseHistory') || '[]');
+      
+      // Add current product to history for better recommendations
+      const historyWithCurrent = [...purchaseHistory, {
+        id: currentProduct.id,
+        name: currentProduct.name,
+        category: currentProduct.category,
+        price: currentProduct.price
+      }];
+
+      const response = await axios.post(`${mlBackendURL}/recommend`, {
+        history: historyWithCurrent,
+        user_id: localStorage.getItem('userId') || 'anonymous',
+        limit: 4 // Get 4 recommendations for related products section
+      });
+
+      if (response.data && response.data.recommendations) {
+        // Convert ML recommendations to the format expected by your UI
+        const formattedRecommendations = response.data.recommendations.map(rec => ({
+          id: rec.id,
+          name: rec.name,
+          price: rec.price,
+          image: rec.image,
+          description: rec.description,
+          category: rec.category,
+          rating: rec.rating || 4.2,
+          recommendation_reason: rec.recommendation_reason
+        }));
+
+        setRelatedProducts(formattedRecommendations);
+        console.log(`✅ Fetched ${formattedRecommendations.length} ML recommendations`);
+      }
+    } catch (err) {
+      console.error("Failed to fetch ML recommendations:", err);
+      // Fallback to category-based recommendations
+      if (currentProduct.id.toString().length > 10) {
+        // MongoDB product
+        fetchRelatedMongo(currentProduct.category, currentProduct.id);
+      } else {
+        // DummyJSON product
+        fetchRelatedDummy(currentProduct.category, parseInt(currentProduct.id));
+      }
+    }
+  };
+
+  // Fallback functions (keep existing logic as backup)
   const fetchRelatedDummy = (category, excludeId) => {
     axios.get(`https://dummyjson.com/products/category/${category}`)
       .then(res => {
@@ -206,7 +277,7 @@ function ProductDetails({ addToCart }) {
 
       {relatedProducts.length > 0 && (
         <div className="related-products-section">
-          <h2 className="related-title">Customers who viewed this item also viewed</h2>
+          <h2 className="related-title">Recommended for you</h2>
           <div className="related-products-grid">
             {relatedProducts.map(rp => (
               <div key={rp.id} className="related-product-card">
@@ -217,6 +288,9 @@ function ProductDetails({ addToCart }) {
                   <h4 className="related-product-title">{rp.name}</h4>
                   <div className="related-product-rating">{renderStars(rp.rating)}</div>
                   <div className="related-product-price">₹{rp.price}</div>
+                  {rp.recommendation_reason && (
+                    <div className="recommendation-reason">{rp.recommendation_reason}</div>
+                  )}
                   <Link to={`/product/${rp.id}`} className="view-details-btn">View Details</Link>
                 </div>
               </div>
