@@ -3,6 +3,9 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import './ProductList.css';
 
+const backendURL = process.env.REACT_APP_API_BASE_URL;
+const mlBackendURL = process.env.REACT_APP_ML_BACKEND_URL;
+
 function ProductList({ addToCart, refreshFlag, searchTerm = '' }) {
   const [allProducts, setAllProducts] = useState([]);
   const [recommended, setRecommended] = useState([]);
@@ -19,7 +22,7 @@ function ProductList({ addToCart, refreshFlag, searchTerm = '' }) {
   const fetchAllProductsAndCategories = async () => {
     try {
       const [mongoRes, dummyRes] = await Promise.all([
-        axios.get('http://localhost:5001/products'),
+        axios.get(`${backendURL}/api/products`),
         axios.get('https://dummyjson.com/products?limit=100')
       ]);
 
@@ -52,7 +55,7 @@ function ProductList({ addToCart, refreshFlag, searchTerm = '' }) {
     try {
       const cart = JSON.parse(localStorage.getItem('cart')) || [];
       const [recommendRes, dummyRes] = await Promise.all([
-        axios.post('http://localhost:5001/recommend', { history: cart }),
+        axios.post(`${mlBackendURL}/recommend`, { history: cart }),
         axios.get('https://dummyjson.com/products?limit=100')
       ]);
 
@@ -68,7 +71,12 @@ function ProductList({ addToCart, refreshFlag, searchTerm = '' }) {
           category: p.category || "Others"
         }));
 
-      setRecommended([...recommendRes.data, ...dummyRecommendations]);
+      const combinedRecs = Array.isArray(recommendRes.data.recommendations) 
+        ? recommendRes.data.recommendations 
+        : recommendRes.data;
+
+      setRecommended([...combinedRecs, ...dummyRecommendations]);
+
     } catch (err) {
       console.error("Recommendation fetch error:", err);
     }
@@ -85,7 +93,7 @@ function ProductList({ addToCart, refreshFlag, searchTerm = '' }) {
     if (id >= 1000) return alert("❌ Cannot delete DummyJSON products.");
     if (!window.confirm("Delete this product?")) return;
 
-    axios.delete(`http://localhost:5001/delete-product/${id}`)
+    axios.delete(`${backendURL}/api/delete-product/${id}`)
       .then(() => {
         alert("✅ Product deleted successfully!");
         fetchAllProductsAndCategories();
