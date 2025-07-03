@@ -83,18 +83,40 @@ function ProductDetails({ addToCart }) {
 
   // Track product view for ML system
   const trackProductView = async (productId) => {
+    // Check if ML backend URL is configured
+    if (!mlBackendURL) {
+      console.warn('ML Backend URL not configured, skipping view tracking');
+      return;
+    }
+
     try {
-      await axios.post(`${mlBackendURL}/track-view`, {
-        product_id: productId
+      // Fix: Use correct endpoint URL without /product/undefined/
+      const trackingUrl = `${mlBackendURL}/track-view`;
+      
+      await axios.post(trackingUrl, {
+        product_id: productId.toString() // Ensure it's a string
       });
       console.log(`✅ Tracked view for product ${productId}`);
     } catch (err) {
       console.error("Failed to track view:", err);
+      // Don't break the user experience if tracking fails
     }
   };
 
   // Fetch ML-based recommendations
   const fetchMLRecommendations = async (currentProduct) => {
+    // Check if ML backend URL is configured
+    if (!mlBackendURL) {
+      console.warn('ML Backend URL not configured, falling back to category-based recommendations');
+      // Fallback to category-based recommendations
+      if (currentProduct.id.toString().length > 10) {
+        fetchRelatedMongo(currentProduct.category, currentProduct.id);
+      } else {
+        fetchRelatedDummy(currentProduct.category, parseInt(currentProduct.id));
+      }
+      return;
+    }
+
     try {
       // Get user's purchase history from localStorage (or your state management)
       const purchaseHistory = JSON.parse(localStorage.getItem('purchaseHistory') || '[]');
@@ -107,7 +129,10 @@ function ProductDetails({ addToCart }) {
         price: currentProduct.price
       }];
 
-      const response = await axios.post(`${mlBackendURL}/recommend`, {
+      // Fix: Use correct endpoint URL
+      const recommendUrl = `${mlBackendURL}/recommend`;
+      
+      const response = await axios.post(recommendUrl, {
         history: historyWithCurrent,
         user_id: localStorage.getItem('userId') || 'anonymous',
         limit: 4 // Get 4 recommendations for related products section
