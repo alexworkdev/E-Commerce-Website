@@ -19,6 +19,10 @@ CORS(app, resources={r"/*": {"origins": [
     "http://localhost:3000"
 ]}}, supports_credentials=True)
 
+@app.route('/health', methods=['GET', 'OPTIONS'])
+def health_check():
+    return jsonify({"status": "OK"})
+
 # Configuration for Node.js backend
 NODE_JS_BACKEND = "https://e-commerce-website-3-uo7o.onrender.com"
 
