@@ -46,16 +46,21 @@ def sync_products_from_nodejs():
             products = []
             
             for product in fetched_products:
+                # Handle both MongoDB and DummyJSON products
+                product_id = product.get("_id") or product.get("id")
                 ml_product = {
-                    "id": product.get("id"),
-                    "name": product.get("name"),
+                    "id": product_id,
+                    "name": product.get("name") or product.get("title"),
                     "price": float(product.get("price", 0)),
-                    "image": product.get("image"),
+                    "image": product.get("image") or product.get("thumbnail"),
                     "description": product.get("description", ""),
                     "category": product.get("category", "Others"),
-                    "rating": round(random.uniform(3.5, 5.0), 1),
-                    "reviews": random.randint(10, 500),
-                    "tags": extract_tags(product.get("name", ""), product.get("description", ""))
+                    "rating": product.get("rating", round(random.uniform(3.5, 5.0), 1)),
+                    "reviews": product.get("reviews", random.randint(10, 500)),
+                    "tags": extract_tags(
+                        product.get("name") or product.get("title", ""), 
+                        product.get("description", "")
+                    )
                 }
                 products.append(ml_product)
             
@@ -112,11 +117,14 @@ def manual_sync():
     else:
         return jsonify({"error": "Failed to sync products"}), 500
 
-@app.route('/delete-product/<int:product_id>', methods=['DELETE'])
+@app.route('/delete-product/<product_id>', methods=['DELETE'])
 def delete_product(product_id):
+    """Delete a product - handle both string and int IDs"""
     global products
     initial_count = len(products)
-    products = [p for p in products if p['id'] != product_id]
+    
+    # Handle both string and integer product IDs
+    products = [p for p in products if str(p['id']) != str(product_id)]
     
     if len(products) == initial_count:
         print(f"⚠️ Product with ID {product_id} not found for deletion.")
@@ -134,7 +142,11 @@ def add_product():
         print("❌ Missing product fields in request.")
         return jsonify({"error": "Missing product fields"}), 400
     
-    new_id = max((p["id"] for p in products), default=0) + 1
+    # Generate new ID - handle both string and int IDs
+    existing_ids = [p["id"] for p in products]
+    numeric_ids = [int(id) for id in existing_ids if str(id).isdigit()]
+    new_id = max(numeric_ids, default=0) + 1
+    
     new_product = {
         "id": new_id,
         "name": data["name"],
@@ -179,9 +191,11 @@ def get_popular_products():
     """Get products sorted by popularity (views + purchases + rating)"""
     scored_products = []
     for product in products:
+        # Convert product ID to string for consistent lookup
+        product_id_str = str(product['id'])
         popularity_score = (
-            product_views.get(product['id'], 0) * 0.3 +
-            product_purchases.get(product['id'], 0) * 0.5 +
+            product_views.get(product_id_str, 0) * 0.3 +
+            product_purchases.get(product_id_str, 0) * 0.5 +
             product.get('rating', 0) * product.get('reviews', 0) * 0.2
         )
         scored_products.append((product, popularity_score))
@@ -193,10 +207,13 @@ def get_category_recommendations(purchased_categories, exclude_ids):
     category_counts = Counter(purchased_categories)
     recommendations = []
     
+    # Convert exclude_ids to strings for consistent comparison
+    exclude_ids_str = set(str(id) for id in exclude_ids)
+    
     for category, count in category_counts.most_common():
         category_products = [
             p for p in products 
-            if p['category'] == category and p['id'] not in exclude_ids
+            if p['category'] == category and str(p['id']) not in exclude_ids_str
         ]
         # Sort by rating and reviews
         category_products.sort(
@@ -211,10 +228,13 @@ def get_similar_products(purchased_products, exclude_ids):
     """Get products similar to purchased ones"""
     recommendations = []
     
+    # Convert exclude_ids to strings for consistent comparison
+    exclude_ids_str = set(str(id) for id in exclude_ids)
+    
     for purchased in purchased_products:
         similar_products = []
         for product in products:
-            if product['id'] not in exclude_ids:
+            if str(product['id']) not in exclude_ids_str:
                 similarity = calculate_similarity(purchased, product)
                 if similarity > 0.3:  # Threshold for similarity
                     similar_products.append((product, similarity))
@@ -230,11 +250,14 @@ def get_price_range_recommendations(purchased_products, exclude_ids):
     if not purchased_products:
         return []
     
+    # Convert exclude_ids to strings for consistent comparison
+    exclude_ids_str = set(str(id) for id in exclude_ids)
+    
     avg_price = sum(p['price'] for p in purchased_products) / len(purchased_products)
     price_range_products = []
     
     for product in products:
-        if product['id'] not in exclude_ids:
+        if str(product['id']) not in exclude_ids_str:
             price_diff = abs(product['price'] - avg_price) / avg_price
             if price_diff <= 0.5:  # Within 50% of average price
                 price_range_products.append(product)
@@ -247,6 +270,13 @@ def get_price_range_recommendations(purchased_products, exclude_ids):
     
     return price_range_products[:3]
 
+def find_product_by_id(product_id):
+    """Find product by ID, handling both string and integer IDs"""
+    for product in products:
+        if str(product['id']) == str(product_id):
+            return product
+    return None
+
 @app.route('/recommend', methods=['POST'])
 def recommend():
     data = request.get_json()
@@ -255,12 +285,14 @@ def recommend():
     limit = data.get("limit", 6)
     
     # Extract purchased product IDs and details
-    bought_ids = {item.get("id") for item in history if "id" in item}
-    purchased_products = [
-        next((p for p in products if p['id'] == item.get("id")), None) 
-        for item in history if "id" in item
-    ]
-    purchased_products = [p for p in purchased_products if p is not None]
+    bought_ids = {str(item.get("id")) for item in history if "id" in item}
+    purchased_products = []
+    
+    for item in history:
+        if "id" in item:
+            product = find_product_by_id(item.get("id"))
+            if product:
+                purchased_products.append(product)
     
     # Update user purchase history
     user_purchases[user_id] = list(bought_ids)
@@ -302,12 +334,12 @@ def recommend():
     for product in popular_products:
         if len(recommendations) >= limit:
             break
-        if product['id'] not in bought_ids and product not in recommendations:
+        if str(product['id']) not in bought_ids and product not in recommendations:
             recommendations.append(product)
             recommendation_reasons.append("Trending now")
     
     # 5. If still not enough, add random products
-    available_products = [p for p in products if p['id'] not in bought_ids and p not in recommendations]
+    available_products = [p for p in products if str(p['id']) not in bought_ids and p not in recommendations]
     while len(recommendations) < limit and available_products:
         random_product = random.choice(available_products)
         recommendations.append(random_product)
@@ -337,8 +369,10 @@ def track_view():
     product_id = data.get("product_id")
     
     if product_id:
-        product_views[product_id] = product_views.get(product_id, 0) + 1
-        print(f"👁️ Product {product_id} viewed (total views: {product_views[product_id]})")
+        # Convert to string for consistent storage
+        product_id_str = str(product_id)
+        product_views[product_id_str] = product_views.get(product_id_str, 0) + 1
+        print(f"👁️ Product {product_id_str} viewed (total views: {product_views[product_id_str]})")
     
     return jsonify({"message": "View tracked"})
 
