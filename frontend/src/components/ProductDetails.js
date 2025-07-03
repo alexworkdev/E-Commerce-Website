@@ -4,7 +4,7 @@ import axios from 'axios';
 import './ProductDetails.css';
 
 const backendURL = process.env.REACT_APP_API_BASE_URL;
-const mlBackendURL = process.env.REACT_APP_ML_API_BASE_URL; 
+const mlBackendURL = process.env.REACT_APP_ML_BACKEND_URL; 
 
 function ProductDetails({ addToCart }) {
   const { id } = useParams();
