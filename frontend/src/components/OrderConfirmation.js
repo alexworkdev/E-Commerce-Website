@@ -10,73 +10,12 @@ function OrderConfirmation({ addToCart, clearCart }) {
   const [error, setError] = useState(null);
   const navigate = useNavigate();
 
-  // Enhanced smart recommendation algorithm with better error handling
-  const generateSmartRecommendations = (purchasedItems, allProducts) => {
-    try {
-      if (!Array.isArray(allProducts) || allProducts.length === 0) {
-        console.warn('No products available for recommendations');
-        return [];
-      }
-
-      if (!purchasedItems || !Array.isArray(purchasedItems) || purchasedItems.length === 0) {
-        // No purchase history - return first 6 products consistently
-        return allProducts.slice(0, 6);
-      }
-
-      const purchasedIds = new Set(purchasedItems.map(item => item?.id).filter(Boolean));
-      const purchasedCategories = [...new Set(purchasedItems.map(item => item?.category).filter(Boolean))];
-      const validPrices = purchasedItems.map(item => item?.price).filter(price => typeof price === 'number' && price > 0);
-      const avgPurchasePrice = validPrices.length > 0 ? validPrices.reduce((sum, price) => sum + price, 0) / validPrices.length : 0;
-      
-      // Filter out already purchased items and ensure valid products
-      const availableProducts = allProducts.filter(product => 
-        product && 
-        product.id && 
-        !purchasedIds.has(product.id) &&
-        product.name &&
-        typeof product.price === 'number'
-      );
-      
-      if (availableProducts.length === 0) {
-        console.warn('No available products after filtering');
-        return [];
-      }
-
-      // Score products based on similarity to purchased items
-      const scoredProducts = availableProducts.map(product => {
-        let score = 0;
-        
-        // Category match (high priority)
-        if (purchasedCategories.length > 0 && product.category && purchasedCategories.includes(product.category)) {
-          score += 50;
-        }
-        
-        // Price similarity 
-        if (avgPurchasePrice > 0 && product.price > 0) {
-          const priceDiff = Math.abs(product.price - avgPurchasePrice);
-          const priceScore = Math.max(0, 30 - (priceDiff / avgPurchasePrice) * 30);
-          score += priceScore;
-        }
-        
-        // Add product ID as tiebreaker for consistent ordering
-        score += (product.id % 100) / 100;
-        
-        return { ...product, score };
-      });
-      
-      // Sort by score (highest first) and return top 6
-      return scoredProducts
-        .sort((a, b) => b.score - a.score)
-        .slice(0, 6)
-        .map(({ score, ...product }) => product);
-    } catch (error) {
-      console.error('Error in generateSmartRecommendations:', error);
-      return allProducts?.slice(0, 6) || [];
-    }
-  };
+  // Use environment variables like ProductDetails.js
+  const backendURL = process.env.REACT_APP_API_BASE_URL;
+  const mlBackendURL = process.env.REACT_APP_ML_BACKEND_URL;
 
   // Enhanced axios instance with better defaults
-  const createAxiosInstance = (timeout = 5000) => {
+  const createAxiosInstance = (timeout = 10000) => {
     return axios.create({
       timeout,
       headers: {
@@ -85,6 +24,161 @@ function OrderConfirmation({ addToCart, clearCart }) {
         'Cache-Control': 'no-cache'
       }
     });
+  };
+
+  // Safe localStorage operations
+  const safeGetFromStorage = (key, defaultValue = []) => {
+    try {
+      const item = localStorage.getItem(key);
+      return item ? JSON.parse(item) : defaultValue;
+    } catch (error) {
+      console.warn(`Error reading from localStorage key "${key}":`, error);
+      return defaultValue;
+    }
+  };
+
+  const safeSetToStorage = (key, value) => {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+      return true;
+    } catch (error) {
+      console.warn(`Error writing to localStorage key "${key}":`, error);
+      return false;
+    }
+  };
+
+  // Fetch ML-based recommendations (similar to ProductDetails.js)
+  const fetchMLRecommendations = async (purchaseHistory) => {
+    // Check if ML backend URL is configured
+    if (!mlBackendURL) {
+      console.warn('ML Backend URL not configured, falling back to category-based recommendations');
+      return await fetchFallbackRecommendations(purchaseHistory);
+    }
+
+    try {
+      console.log('🔍 Fetching ML recommendations for order confirmation...');
+      
+      // Prepare history in the format expected by ML backend
+      const historyWithDetails = purchaseHistory.map(item => ({
+        id: item.id,
+        name: item.name,
+        category: item.category,
+        price: item.price,
+        description: item.description || '',
+        image: item.image || ''
+      }));
+
+      // Use correct endpoint URL like ProductDetails.js
+      const recommendUrl = `${mlBackendURL}/recommend`;
+      
+      const response = await axios.post(recommendUrl, {
+        history: historyWithDetails,
+        user_id: localStorage.getItem('userId') || 'anonymous',
+        limit: 6 // Get 6 recommendations for order confirmation
+      });
+
+      if (response.data && response.data.recommendations) {
+        // Convert ML recommendations to the format expected by UI
+        const formattedRecommendations = response.data.recommendations.map(rec => ({
+          id: rec.id,
+          name: rec.name,
+          price: rec.price,
+          image: rec.image,
+          description: rec.description,
+          category: rec.category,
+          rating: rec.rating || 4.2,
+          recommendation_reason: rec.recommendation_reason || 'Recommended for you'
+        }));
+
+        console.log(`✅ Fetched ${formattedRecommendations.length} ML recommendations`);
+        return formattedRecommendations;
+      }
+    } catch (err) {
+      console.error("Failed to fetch ML recommendations:", err);
+      // Fallback to category-based recommendations
+      return await fetchFallbackRecommendations(purchaseHistory);
+    }
+  };
+
+  // Fallback recommendation functions (similar to ProductDetails.js)
+  const fetchFallbackRecommendations = async (purchaseHistory) => {
+    console.log('🔄 Using fallback recommendation methods...');
+    
+    // Try different fallback methods in order
+    let recommendations = [];
+    
+    // 1. Try category-based from MongoDB
+    if (purchaseHistory.length > 0) {
+      const categories = [...new Set(purchaseHistory.map(item => item.category).filter(Boolean))];
+      recommendations = await fetchCategoryBasedRecommendations(categories, purchaseHistory);
+    }
+    
+    // 2. If still no recommendations, try DummyJSON
+    if (recommendations.length === 0) {
+      recommendations = await fetchDummyJSONRecommendations();
+    }
+    
+    // 3. Final fallback to hardcoded
+    if (recommendations.length === 0) {
+      recommendations = getHardcodedRecommendations();
+    }
+    
+    return recommendations;
+  };
+
+  const fetchCategoryBasedRecommendations = async (categories, excludeItems) => {
+    if (!backendURL || categories.length === 0) return [];
+    
+    try {
+      const excludeIds = excludeItems.map(item => item.id.toString());
+      const allRecommendations = [];
+      
+      for (const category of categories) {
+        const response = await axios.get(`${backendURL}/api/products?category=${category}`);
+        const categoryProducts = response.data
+          .filter(p => !excludeIds.includes(p.id.toString()))
+          .slice(0, 2)
+          .map(p => ({
+            id: p.id,
+            name: p.name,
+            price: p.price,
+            image: p.image,
+            description: p.description,
+            category: p.category,
+            rating: p.rating || 4.2
+          }));
+        allRecommendations.push(...categoryProducts);
+      }
+      
+      console.log(`✅ Fetched ${allRecommendations.length} category-based recommendations`);
+      return allRecommendations.slice(0, 6);
+    } catch (err) {
+      console.error("Category-based recommendations failed:", err);
+      return [];
+    }
+  };
+
+  const fetchDummyJSONRecommendations = async () => {
+    try {
+      const response = await axios.get('https://dummyjson.com/products?limit=20');
+      const dummyProducts = response.data.products.map(p => ({
+        id: p.id + 1000, // Convert to frontend format
+        name: p.title,
+        price: p.price,
+        image: p.thumbnail,
+        description: p.description,
+        category: p.category,
+        rating: p.rating || 4.2
+      }));
+      
+      // Shuffle and take 6
+      const shuffled = dummyProducts.sort(() => Math.random() - 0.5);
+      console.log(`✅ Fetched ${shuffled.length} DummyJSON recommendations`);
+      return shuffled.slice(0, 6);
+    } catch (err) {
+      console.error("DummyJSON recommendations failed:", err);
+      return [];
+    }
   };
 
   // Improved hardcoded fallback with more variety
@@ -141,194 +235,45 @@ function OrderConfirmation({ addToCart, clearCart }) {
     ];
   };
 
-  // Safe localStorage operations
-  const safeGetFromStorage = (key, defaultValue = []) => {
-    try {
-      const item = localStorage.getItem(key);
-      return item ? JSON.parse(item) : defaultValue;
-    } catch (error) {
-      console.warn(`Error reading from localStorage key "${key}":`, error);
-      return defaultValue;
-    }
-  };
-
-  const safeSetToStorage = (key, value) => {
-    try {
-      localStorage.setItem(key, JSON.stringify(value));
-      return true;
-    } catch (error) {
-      console.warn(`Error writing to localStorage key "${key}":`, error);
-      return false;
-    }
-  };
-
   useEffect(() => {
     let isMounted = true;
     let abortController = new AbortController();
     
-    // Get purchase history from localStorage with error handling
-    let history = safeGetFromStorage('purchaseHistory', []);
-    
-    // If no purchase history exists, try to get the last cart items before they were cleared
-    if (history.length === 0) {
-      history = safeGetFromStorage('lastPurchasedItems', []);
-    }
-
-    // Store the current cart items as purchase history before clearing
-    const currentCart = safeGetFromStorage('cart', []);
-    if (currentCart.length > 0) {
-      // Add current cart items to purchase history
-      const existingHistory = safeGetFromStorage('purchaseHistory', []);
-      const updatedHistory = [...existingHistory, ...currentCart];
-      safeSetToStorage('purchaseHistory', updatedHistory);
-      
-      // Also store as last purchased items for immediate use
-      safeSetToStorage('lastPurchasedItems', currentCart);
-      
-      // Use the current cart as history for recommendations
-      history = currentCart;
-    }
-
-    console.log('Purchase history for recommendations:', history);
-
-    // Enhanced recommendation fetching with better error handling
     const fetchRecommendations = async () => {
       try {
         setError(null);
+        setLoading(true);
 
-        // Skip ML backend if no purchase history (saves resources)
-        if (history.length > 0) {
-          try {
-            console.log('Attempting ML backend...');
-            const mlAxios = createAxiosInstance(2000); // Shorter timeout for ML
-            const mlResponse = await mlAxios.post('http://localhost:5001/recommend', 
-              { history },
-              { signal: abortController.signal }
-            );
-            
-            if (isMounted && mlResponse.data) {
-              const mlRecommendations = mlResponse.data.recommendations || mlResponse.data;
-              if (Array.isArray(mlRecommendations) && mlRecommendations.length > 0) {
-                const formattedRecommendations = mlRecommendations.slice(0, 6).map(p => ({
-                  id: p.id,
-                  name: p.name || 'Unnamed Product',
-                  price: typeof p.price === 'number' ? p.price : 0,
-                  image: p.image || 'https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=300&h=300&fit=crop',
-                  description: p.description || 'No description available',
-                  category: p.category || 'General'
-                }));
-                
-                console.log('✅ ML recommendations loaded successfully');
-                setRecommended(formattedRecommendations);
-                setLoading(false);
-                return;
-              }
-            }
-          } catch (mlError) {
-            if (mlError.name !== 'CanceledError') {
-              console.log("ML backend unavailable:", mlError.message);
-            }
-          }
-        }
-
-        // Try main API with enhanced error handling
-        let retryCount = 0;
-        const maxRetries = 2;
+        // Get purchase history from localStorage
+        let history = safeGetFromStorage('purchaseHistory', []);
         
-        while (retryCount < maxRetries && isMounted) {
-          try {
-            console.log(`Attempting main API (attempt ${retryCount + 1})...`);
-            const nodeAxios = createAxiosInstance(6000);
-            const nodeResponse = await nodeAxios.get(
-              'https://e-commerce-website-3-uo7o.onrender.com/api/products',
-              { signal: abortController.signal }
-            );
-            
-            if (isMounted && nodeResponse.data && Array.isArray(nodeResponse.data)) {
-              const smartRecommendations = generateSmartRecommendations(history, nodeResponse.data);
-              const formattedRecommendations = smartRecommendations.map(p => ({
-                id: p.id,
-                name: p.name || 'Unnamed Product',
-                price: typeof p.price === 'number' ? p.price : 0,
-                image: p.image || 'https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=300&h=300&fit=crop',
-                description: p.description || 'No description available',
-                category: p.category || 'General'
-              }));
-              
-              console.log('✅ Main API recommendations loaded successfully');
-              setRecommended(formattedRecommendations);
-              setLoading(false);
-              return;
-            }
-          } catch (nodeError) {
-            if (nodeError.name === 'CanceledError') {
-              return; // Component unmounted
-            }
-            
-            retryCount++;
-            console.log(`Main API attempt ${retryCount} failed:`, nodeError.message);
-            
-            if (retryCount < maxRetries) {
-              // Wait before retry with exponential backoff
-              await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
-            }
-          }
+        // If no purchase history exists, try to get the last cart items before they were cleared
+        if (history.length === 0) {
+          history = safeGetFromStorage('lastPurchasedItems', []);
         }
 
-        // Enhanced DummyJSON fallback with better error handling
-        if (isMounted) {
-          try {
-            console.log("Attempting DummyJSON fallback...");
-            const dummyAxios = createAxiosInstance(8000);
-            
-            // Use different endpoints to avoid resource exhaustion
-            const endpoints = [
-              'https://dummyjson.com/products?limit=20&skip=0',
-              'https://dummyjson.com/products?limit=15&skip=5',
-              'https://dummyjson.com/products?limit=10&skip=10'
-            ];
-            
-            let dummyResponse = null;
-            for (const endpoint of endpoints) {
-              try {
-                dummyResponse = await dummyAxios.get(endpoint, { signal: abortController.signal });
-                if (dummyResponse.data?.products) {
-                  break;
-                }
-              } catch (endpointError) {
-                console.log(`DummyJSON endpoint failed: ${endpoint}`, endpointError.message);
-                continue;
-              }
-            }
-            
-            if (isMounted && dummyResponse?.data?.products) {
-              const dummyProducts = dummyResponse.data.products.map(p => ({
-                id: (p.id || Math.random() * 10000) + 1000,
-                name: p.title || 'Product',
-                price: typeof p.price === 'number' ? p.price : Math.floor(Math.random() * 1000) + 100,
-                image: p.thumbnail || 'https://images.unsplash.com/photo-1560472354-b33ff0c44a43?w=300&h=300&fit=crop',
-                description: p.description || 'No description available',
-                category: p.category || "Electronics"
-              }));
-              
-              const smartRecommendations = generateSmartRecommendations(history, dummyProducts);
-              console.log('✅ DummyJSON fallback recommendations loaded successfully');
-              setRecommended(smartRecommendations);
-              setLoading(false);
-              return;
-            }
-          } catch (finalError) {
-            if (finalError.name !== 'CanceledError') {
-              console.warn("DummyJSON also failed:", finalError.message);
-            }
-          }
+        // Store the current cart items as purchase history before clearing
+        const currentCart = safeGetFromStorage('cart', []);
+        if (currentCart.length > 0) {
+          // Add current cart items to purchase history
+          const existingHistory = safeGetFromStorage('purchaseHistory', []);
+          const updatedHistory = [...existingHistory, ...currentCart];
+          safeSetToStorage('purchaseHistory', updatedHistory);
+          
+          // Also store as last purchased items for immediate use
+          safeSetToStorage('lastPurchasedItems', currentCart);
+          
+          // Use the current cart as history for recommendations
+          history = currentCart;
         }
 
-        // Last resort - hardcoded recommendations to prevent empty state
+        console.log('🛒 Purchase history for recommendations:', history);
+
+        // Fetch recommendations using ML backend or fallback
+        const recommendations = await fetchMLRecommendations(history);
+        
         if (isMounted) {
-          console.log("Using hardcoded fallback recommendations");
-          const hardcodedRecommendations = getHardcodedRecommendations();
-          setRecommended(hardcodedRecommendations);
+          setRecommended(recommendations);
           setLoading(false);
         }
 
@@ -342,6 +287,7 @@ function OrderConfirmation({ addToCart, clearCart }) {
       }
     };
 
+    // Start fetching recommendations
     fetchRecommendations();
 
     // Clear cart after storing purchase history
@@ -357,7 +303,7 @@ function OrderConfirmation({ addToCart, clearCart }) {
       isMounted = false;
       abortController.abort();
     };
-  }, [clearCart]);
+  }, [clearCart, mlBackendURL, backendURL]);
 
   const handleViewDetails = (product) => {
     try {
@@ -435,6 +381,12 @@ function OrderConfirmation({ addToCart, clearCart }) {
               ₹{typeof product.price === 'number' ? product.price : 0}
             </span>
           </div>
+
+          {product.recommendation_reason && (
+            <div className="recommendation-reason">
+              <small>{product.recommendation_reason}</small>
+            </div>
+          )}
 
           <div className="product-actions">
             <button className="add-to-cart-btn"
