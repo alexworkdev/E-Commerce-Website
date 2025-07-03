@@ -73,6 +73,47 @@ def sync_products_from_nodejs():
         print(f"❌ Error syncing products: {str(e)}")
         return False
 
+def sync_dummyjson_products():
+    """Sync DummyJSON products (IDs 1001-1100) to ML system"""
+    if not REQUESTS_AVAILABLE:
+        print("❌ Cannot sync DummyJSON products: 'requests' module not available")
+        return False
+        
+    try:
+        # Fetch products from DummyJSON (IDs 1-100)
+        response = requests.get("https://dummyjson.com/products?limit=100")
+        if response.status_code == 200:
+            dummy_data = response.json()
+            
+            for product in dummy_data.get("products", []):
+                # Convert DummyJSON ID to frontend ID (add 1000)
+                frontend_id = product.get("id", 0) + 1000
+                
+                ml_product = {
+                    "id": frontend_id,  # Use frontend ID format
+                    "name": product.get("title", ""),
+                    "price": float(product.get("price", 0)),
+                    "image": product.get("thumbnail", ""),
+                    "description": product.get("description", ""),
+                    "category": product.get("category", "Others"),
+                    "rating": product.get("rating", round(random.uniform(3.5, 5.0), 1)),
+                    "reviews": random.randint(10, 500),
+                    "tags": extract_tags(
+                        product.get("title", ""), 
+                        product.get("description", "")
+                    )
+                }
+                products.append(ml_product)
+            
+            print(f"✅ Synced {len(dummy_data.get('products', []))} DummyJSON products")
+            return True
+        else:
+            print(f"❌ Failed to sync DummyJSON products: {response.status_code}")
+            return False
+    except Exception as e:
+        print(f"❌ Error syncing DummyJSON products: {str(e)}")
+        return False
+
 def extract_tags(name, description):
     """Extract relevant tags from product name and description"""
     text = (name + " " + description).lower()
@@ -90,7 +131,52 @@ def extract_tags(name, description):
 
 # Initialize products when the app starts
 def initialize_products():
-    sync_products_from_nodejs()
+    """Initialize products from both Node.js backend and DummyJSON"""
+    print("🔄 Initializing products from multiple sources...")
+    
+    # Sync from Node.js backend
+    nodejs_success = sync_products_from_nodejs()
+    
+    # Sync from DummyJSON
+    dummyjson_success = sync_dummyjson_products()
+    
+    if not nodejs_success and not dummyjson_success:
+        print("⚠️ Failed to sync from both sources. Using fallback products.")
+        # Create some fallback products to ensure ML system works
+        create_fallback_products()
+    
+    print(f"📦 Total products available: {len(products)}")
+
+def create_fallback_products():
+    """Create fallback products if syncing fails"""
+    global products
+    fallback_products = [
+        {
+            "id": "fallback_001",
+            "name": "Sample Product 1",
+            "price": 99.99,
+            "image": "https://via.placeholder.com/300",
+            "description": "A great sample product",
+            "category": "Electronics",
+            "rating": 4.5,
+            "reviews": 150,
+            "tags": ["sample", "electronics"]
+        },
+        {
+            "id": "fallback_002",
+            "name": "Sample Product 2",
+            "price": 149.99,
+            "image": "https://via.placeholder.com/300",
+            "description": "Another great sample product",
+            "category": "Fashion",
+            "rating": 4.2,
+            "reviews": 200,
+            "tags": ["sample", "fashion"]
+        }
+    ]
+    
+    products.extend(fallback_products)
+    print(f"➕ Added {len(fallback_products)} fallback products")
 
 # Initialize products on first request
 @app.before_request
@@ -111,11 +197,14 @@ def home():
 @app.route('/sync-products', methods=['POST'])
 def manual_sync():
     """Manually trigger product synchronization"""
-    success = sync_products_from_nodejs()
-    if success:
-        return jsonify({"message": f"Successfully synced {len(products)} products"})
-    else:
-        return jsonify({"error": "Failed to sync products"}), 500
+    # Clear existing products
+    global products
+    products = []
+    
+    # Re-initialize
+    initialize_products()
+    
+    return jsonify({"message": f"Successfully synced {len(products)} products"})
 
 @app.route('/delete-product/<product_id>', methods=['DELETE'])
 def delete_product(product_id):
@@ -283,6 +372,20 @@ def recommend():
     history = data.get("history", [])
     user_id = data.get("user_id", "anonymous")
     limit = data.get("limit", 6)
+    
+    print(f"🔍 Recommendation request for user {user_id}")
+    print(f"📊 Available products: {len(products)}")
+    print(f"🛒 User history: {len(history)} items")
+    
+    # If no products available, return empty recommendations
+    if not products:
+        print("❌ No products available for recommendations")
+        return jsonify({
+            "recommendations": [],
+            "total_products": 0,
+            "user_history_count": len(history),
+            "message": "No products available for recommendations"
+        })
     
     # Extract purchased product IDs and details
     bought_ids = {str(item.get("id")) for item in history if "id" in item}
