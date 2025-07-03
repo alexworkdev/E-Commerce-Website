@@ -313,6 +313,54 @@ def get_category_recommendations(purchased_categories, exclude_ids):
     
     return recommendations
 
+def get_diverse_category_recommendations(purchased_categories, exclude_ids, used_categories):
+    """Get recommendations from different categories for diversity"""
+    category_counts = Counter(purchased_categories)
+    recommendations = []
+    
+    # Convert exclude_ids to strings for consistent comparison
+    exclude_ids_str = set(str(id) for id in exclude_ids)
+    
+    # Get all available categories
+    all_categories = set(p['category'] for p in products)
+    
+    # Prioritize categories that user has purchased from but haven't been used yet
+    for category, count in category_counts.most_common():
+        if category not in used_categories:
+            category_products = [
+                p for p in products 
+                if p['category'] == category and str(p['id']) not in exclude_ids_str
+            ]
+            if category_products:
+                # Sort by rating and reviews, get the best one
+                category_products.sort(
+                    key=lambda x: (x.get('rating', 0) * x.get('reviews', 0)), 
+                    reverse=True
+                )
+                recommendations.append(category_products[0])
+                if len(recommendations) >= 2:
+                    break
+    
+    # If still need more, add from completely different categories
+    if len(recommendations) < 2:
+        unused_categories = all_categories - used_categories - set(purchased_categories)
+        for category in unused_categories:
+            category_products = [
+                p for p in products 
+                if p['category'] == category and str(p['id']) not in exclude_ids_str
+            ]
+            if category_products:
+                # Sort by rating and reviews, get the best one
+                category_products.sort(
+                    key=lambda x: (x.get('rating', 0) * x.get('reviews', 0)), 
+                    reverse=True
+                )
+                recommendations.append(category_products[0])
+                if len(recommendations) >= 2:
+                    break
+    
+    return recommendations
+
 def get_similar_products(purchased_products, exclude_ids):
     """Get products similar to purchased ones"""
     recommendations = []
@@ -406,48 +454,68 @@ def recommend():
     
     recommendations = []
     recommendation_reasons = []
+    used_categories = set()
     
     if purchased_products:
         print(f"🛍️ User {user_id} has purchase history: {[p['name'] for p in purchased_products]}")
         
-        # 1. Similar products (collaborative filtering)
+        # 1. Add ONE similar product (avoid duplicates)
         similar_recs = get_similar_products(purchased_products, bought_ids)
-        for rec in similar_recs[:2]:
-            if rec not in recommendations:
-                recommendations.append(rec)
-                recommendation_reasons.append(f"Similar to {purchased_products[0]['name']}")
+        if similar_recs:
+            best_similar = similar_recs[0]
+            recommendations.append(best_similar)
+            recommendation_reasons.append(f"Similar to {purchased_products[0]['name']}")
+            used_categories.add(best_similar['category'])
         
-        # 2. Category-based recommendations
+        # 2. Add products from DIFFERENT categories than already added
         purchased_categories = [p['category'] for p in purchased_products]
-        category_recs = get_category_recommendations(purchased_categories, bought_ids)
+        category_recs = get_diverse_category_recommendations(purchased_categories, bought_ids, used_categories)
         for rec in category_recs[:2]:
             if rec not in recommendations:
                 recommendations.append(rec)
                 recommendation_reasons.append(f"Popular in {rec['category']}")
+                used_categories.add(rec['category'])
         
-        # 3. Price range recommendations
+        # 3. Add ONE price range recommendation from different category
         price_recs = get_price_range_recommendations(purchased_products, bought_ids)
-        for rec in price_recs[:2]:
-            if rec not in recommendations:
+        for rec in price_recs:
+            if rec not in recommendations and rec['category'] not in used_categories:
                 recommendations.append(rec)
                 recommendation_reasons.append("In your price range")
+                used_categories.add(rec['category'])
+                break
     
-    # 4. Fill remaining slots with popular products
+    # 4. Fill remaining slots with diverse popular products
     popular_products = get_popular_products()
     for product in popular_products:
         if len(recommendations) >= limit:
             break
-        if str(product['id']) not in bought_ids and product not in recommendations:
+        if (str(product['id']) not in bought_ids and 
+            product not in recommendations and 
+            product['category'] not in used_categories):
             recommendations.append(product)
             recommendation_reasons.append("Trending now")
+            used_categories.add(product['category'])
     
-    # 5. If still not enough, add random products
+    # 5. If still not enough, add random products from different categories
     available_products = [p for p in products if str(p['id']) not in bought_ids and p not in recommendations]
-    while len(recommendations) < limit and available_products:
-        random_product = random.choice(available_products)
-        recommendations.append(random_product)
-        recommendation_reasons.append("You might like this")
-        available_products.remove(random_product)
+    random.shuffle(available_products)  # Shuffle for better diversity
+    
+    for product in available_products:
+        if len(recommendations) >= limit:
+            break
+        if product['category'] not in used_categories:
+            recommendations.append(product)
+            recommendation_reasons.append("You might like this")
+            used_categories.add(product['category'])
+    
+    # 6. If still not enough, fill with any remaining products
+    for product in available_products:
+        if len(recommendations) >= limit:
+            break
+        if product not in recommendations:
+            recommendations.append(product)
+            recommendation_reasons.append("Recommended for you")
     
     # Prepare response with reasons
     recommended_with_reasons = []
@@ -458,6 +526,7 @@ def recommend():
     
     print(f"🎯 Recommended {len(recommended_with_reasons)} products for user {user_id}")
     print(f"📋 Recommendations: {[(p['name'], p['recommendation_reason']) for p in recommended_with_reasons]}")
+    print(f"🎨 Categories used: {list(used_categories)}")
     
     return jsonify({
         "recommendations": recommended_with_reasons,
