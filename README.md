@@ -33,7 +33,7 @@
 
 <h2>📂 Project Structure</h2>
 <pre>
-ecommerce-ai/
+E-Commerce-Website/
 ├── Screenshots/
 ├── frontend/        # React Frontend (Vercel Deployed)
 │   ├── public/
