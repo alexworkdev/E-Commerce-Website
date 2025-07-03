@@ -14,7 +14,22 @@ function OrderConfirmation({ addToCart, clearCart }) {
   const backendURL = process.env.REACT_APP_API_BASE_URL;
   const mlBackendURL = process.env.REACT_APP_ML_BACKEND_URL;
 
-  // Enhanced axios instance with better defaults
+  // Enhanced axios instance with better defaults for ML backend
+  const createMLAxiosInstance = () => {
+    return axios.create({
+      timeout: 30000, // Increased timeout for ML backend (30 seconds)
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache'
+      },
+      // Add retry configuration
+      retry: 3,
+      retryDelay: 1000
+    });
+  };
+
+  // Enhanced axios instance with better defaults for regular backend
   const createAxiosInstance = (timeout = 10000) => {
     return axios.create({
       timeout,
@@ -24,6 +39,32 @@ function OrderConfirmation({ addToCart, clearCart }) {
         'Cache-Control': 'no-cache'
       }
     });
+  };
+
+  // Add retry logic for axios requests
+  const axiosRetry = async (axiosInstance, config, maxRetries = 3) => {
+    let lastError;
+    
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        return await axiosInstance(config);
+      } catch (error) {
+        lastError = error;
+        console.warn(`Request attempt ${i + 1} failed:`, error.message);
+        
+        // Don't retry on certain errors
+        if (error.response?.status === 404 || error.response?.status === 400) {
+          break;
+        }
+        
+        // Wait before retrying (exponential backoff)
+        if (i < maxRetries - 1) {
+          await new Promise(resolve => setTimeout(resolve, Math.pow(2, i) * 1000));
+        }
+      }
+    }
+    
+    throw lastError;
   };
 
   // Safe localStorage operations
@@ -47,7 +88,7 @@ function OrderConfirmation({ addToCart, clearCart }) {
     }
   };
 
-  // Fetch ML-based recommendations (similar to ProductDetails.js)
+  // Enhanced ML recommendations with better error handling and wake-up logic
   const fetchMLRecommendations = async (purchaseHistory) => {
     // Check if ML backend URL is configured
     if (!mlBackendURL) {
@@ -58,6 +99,21 @@ function OrderConfirmation({ addToCart, clearCart }) {
     try {
       console.log('🔍 Fetching ML recommendations for order confirmation...');
       
+      // First, try to wake up the ML backend with a simple health check
+      const mlAxios = createMLAxiosInstance();
+      
+      try {
+        console.log('🚀 Attempting to wake up ML backend...');
+        await axiosRetry(mlAxios, {
+          method: 'get',
+          url: `${mlBackendURL}/health`,
+          timeout: 15000
+        }, 2);
+        console.log('✅ ML backend is awake');
+      } catch (healthError) {
+        console.warn('⚠️ ML backend health check failed, but proceeding with recommendations:', healthError.message);
+      }
+
       // Prepare history in the format expected by ML backend
       const historyWithDetails = purchaseHistory.map(item => ({
         id: item.id,
@@ -68,14 +124,19 @@ function OrderConfirmation({ addToCart, clearCart }) {
         image: item.image || ''
       }));
 
-      // Use correct endpoint URL like ProductDetails.js
+      // Use correct endpoint URL with retry logic
       const recommendUrl = `${mlBackendURL}/recommend`;
       
-      const response = await axios.post(recommendUrl, {
-        history: historyWithDetails,
-        user_id: localStorage.getItem('userId') || 'anonymous',
-        limit: 6 // Get 6 recommendations for order confirmation
-      });
+      const response = await axiosRetry(mlAxios, {
+        method: 'post',
+        url: recommendUrl,
+        data: {
+          history: historyWithDetails,
+          user_id: localStorage.getItem('userId') || 'anonymous',
+          limit: 6 // Get 6 recommendations for order confirmation
+        },
+        timeout: 25000 // Give extra time for ML processing
+      }, 3);
 
       if (response.data && response.data.recommendations) {
         // Convert ML recommendations to the format expected by UI
@@ -95,12 +156,22 @@ function OrderConfirmation({ addToCart, clearCart }) {
       }
     } catch (err) {
       console.error("Failed to fetch ML recommendations:", err);
+      
+      // Log specific error details for debugging
+      if (err.code === 'ERR_NETWORK') {
+        console.error('Network error - ML backend may be sleeping or unreachable');
+      } else if (err.code === 'ECONNABORTED') {
+        console.error('Request timeout - ML backend took too long to respond');
+      } else if (err.message?.includes('ERR_INSUFFICIENT_RESOURCES')) {
+        console.error('Insufficient resources - ML backend may be overloaded');
+      }
+      
       // Fallback to category-based recommendations
       return await fetchFallbackRecommendations(purchaseHistory);
     }
   };
 
-  // Fallback recommendation functions (similar to ProductDetails.js)
+  // Enhanced fallback recommendation functions
   const fetchFallbackRecommendations = async (purchaseHistory) => {
     console.log('🔄 Using fallback recommendation methods...');
     
@@ -132,22 +203,32 @@ function OrderConfirmation({ addToCart, clearCart }) {
     try {
       const excludeIds = excludeItems.map(item => item.id.toString());
       const allRecommendations = [];
+      const backendAxios = createAxiosInstance();
       
       for (const category of categories) {
-        const response = await axios.get(`${backendURL}/api/products?category=${category}`);
-        const categoryProducts = response.data
-          .filter(p => !excludeIds.includes(p.id.toString()))
-          .slice(0, 2)
-          .map(p => ({
-            id: p.id,
-            name: p.name,
-            price: p.price,
-            image: p.image,
-            description: p.description,
-            category: p.category,
-            rating: p.rating || 4.2
-          }));
-        allRecommendations.push(...categoryProducts);
+        try {
+          const response = await axiosRetry(backendAxios, {
+            method: 'get',
+            url: `${backendURL}/api/products?category=${category}`,
+            timeout: 8000
+          }, 2);
+          
+          const categoryProducts = response.data
+            .filter(p => !excludeIds.includes(p.id.toString()))
+            .slice(0, 2)
+            .map(p => ({
+              id: p.id,
+              name: p.name,
+              price: p.price,
+              image: p.image,
+              description: p.description,
+              category: p.category,
+              rating: p.rating || 4.2
+            }));
+          allRecommendations.push(...categoryProducts);
+        } catch (categoryError) {
+          console.warn(`Failed to fetch category ${category}:`, categoryError.message);
+        }
       }
       
       console.log(`✅ Fetched ${allRecommendations.length} category-based recommendations`);
@@ -160,7 +241,13 @@ function OrderConfirmation({ addToCart, clearCart }) {
 
   const fetchDummyJSONRecommendations = async () => {
     try {
-      const response = await axios.get('https://dummyjson.com/products?limit=20');
+      const dummyAxios = createAxiosInstance();
+      const response = await axiosRetry(dummyAxios, {
+        method: 'get',
+        url: 'https://dummyjson.com/products?limit=20',
+        timeout: 8000
+      }, 2);
+      
       const dummyProducts = response.data.products.map(p => ({
         id: p.id + 1000, // Convert to frontend format
         name: p.title,
@@ -183,6 +270,7 @@ function OrderConfirmation({ addToCart, clearCart }) {
 
   // Improved hardcoded fallback with more variety
   const getHardcodedRecommendations = () => {
+    console.log('📦 Using hardcoded recommendations as final fallback');
     return [
       {
         id: 9001,
