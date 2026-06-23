@@ -99,7 +99,7 @@ Fully extendable to integrate advanced ML models using the Python-based <code>ml
 
 <h2>🖥️ Frontend Demo</h2>
 <p align="center">
-  <img src="https://github.com/1810suman/E-Commerce-Website/blob/main/Screenshots/Home_page.png" alt="Surakshit Store Front Page" width="600">
+  <img src="https://github.com/alexernandes10041-debugger/E-Commerce-Website/blob/main/Screenshots/Home_page.png" alt="Surakshit Store Front Page" width="600">
 </p>
 
 <h2>💡 Author</h2>
@@ -109,7 +109,7 @@ Fully extendable to integrate advanced ML models using the Python-based <code>ml
 
 <h2>🔗 Useful Links</h2>
 <ul>
-  <li><a href="https://github.com/1810suman/E-Commerce-Website" target="_blank">GitHub Repository</a></li>
+  <li><a href="https://github.com/alexernandes10041-debugger/E-Commerce-Website" target="_blank">GitHub Repository</a></li>
   <li><a href="https://dummyjson.com" target="_blank">DummyJSON API for Sample Products</a></li>
   <li><a href="https://auth0.com" target="_blank">Auth0 for Secure Authentication</a></li>
 </ul>
